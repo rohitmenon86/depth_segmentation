@@ -1,5 +1,5 @@
 <launch>
-  <arg name="sensor_name" default="primesense" />
+  <arg name="sensor_name" default="realsense" />
   <arg name="visualize" default="false" />
 
   <node name="depth_segmentation_node" pkg="depth_segmentation" type="depth_segmentation_node" output="screen">

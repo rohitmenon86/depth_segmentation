@@ -8,6 +8,9 @@
 #include "depth_segmentation/DepthSegmenterConfig.h"
 #include "depth_segmentation/common.h"
 
+#include <pcl/pcl_base.h>
+#include <pcl/point_types.h>
+
 namespace depth_segmentation {
 
 class Camera {
@@ -159,13 +162,30 @@ class DepthSegmenter {
                 const cv::Mat& depth_map, const cv::Mat& edge_map,
                 const cv::Mat& normal_map, cv::Mat* labeled_map,
                 std::vector<cv::Mat>* segment_masks,
-                std::vector<Segment>* segments);
+                std::vector<Segment>* segments,
+                const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud = NULL);
   void labelMap(
       const cv::Mat& rgb_image, const cv::Mat& depth_image,
       const SemanticInstanceSegmentation& semantic_instance_segmentation,
       const cv::Mat& depth_map, const cv::Mat& edge_map,
       const cv::Mat& normal_map, cv::Mat* labeled_map,
-      std::vector<cv::Mat>* segment_masks, std::vector<Segment>* segments);
+      std::vector<cv::Mat>* segment_masks, std::vector<Segment>* segments,
+      const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud = NULL);
+
+  void labelMap(
+      const cv::Mat& rgb_image, const cv::Mat& depth_image,
+      const SemanticInstanceSegmentation& semantic_instance_segmentation,
+      const cv::Mat& depth_map, const cv::Mat& edge_map,
+      const cv::Mat& normal_map, cv::Mat* labeled_map,
+      std::vector<cv::Mat>* segment_masks, std::vector<Segment>* segments, std::vector<Segment>& overlap_segments,
+      const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud = NULL);
+
+  void createSegmentFromOverlapMask(const cv::Mat& rgb_image, const cv::Mat& depth_image,
+                                  const cv::Mat& depth_map, const cv::Mat& edge_map,
+                                  const cv::Mat& normal_map, cv::Mat* labeled_map,
+                                  const cv::Mat& original_depth_map,  
+                                  const cv::Mat& overlap_mask, const Segment& depth_segment, Segment& overlap_segment, size_t label, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud);    
+
   void inpaintImage(const cv::Mat& depth_image, const cv::Mat& edge_map,
                     const cv::Mat& label_map, cv::Mat* inpainted);
   void findBlobs(const cv::Mat& binary,
@@ -182,6 +202,7 @@ class DepthSegmenter {
   cv::rgbd::RgbdNormals rgbd_normals_;
   std::vector<cv::Scalar> colors_;
   std::vector<int> labels_;
+  size_t running_index_; 
 };
 
 // TODO(ntonci): Make a unit test.

@@ -168,6 +168,7 @@ void DepthSegmenter::initialize() {
       depth_camera_.getCameraMatrix(), params_.normals.window_size,
       static_cast<int>(params_.normals.method));
   LOG(INFO) << "DepthSegmenter initialized";
+  running_index_ = 0u; 
 }
 
 void DepthSegmenter::dynamicReconfigureCallback(
@@ -728,12 +729,12 @@ void DepthSegmenter::generateRandomColorsAndLabels(
   *labels = labels_;
 }
 
-void DepthSegmenter::labelMap(const cv::Mat& rgb_image,
+void DepthSegmenter::labelMap( const cv::Mat& rgb_image,
                               const cv::Mat& depth_image,
                               const cv::Mat& depth_map, const cv::Mat& edge_map,
                               const cv::Mat& normal_map, cv::Mat* labeled_map,
                               std::vector<cv::Mat>* segment_masks,
-                              std::vector<Segment>* segments) {
+                              std::vector<Segment>* segments, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud) {
   CHECK(!rgb_image.empty());
   CHECK(!depth_image.empty());
   CHECK_EQ(depth_image.type(), CV_32FC1);
@@ -883,9 +884,23 @@ void DepthSegmenter::labelMap(const cv::Mat& rgb_image,
           } else {
             // Append vectors from depth_map and normals from normal_map to
             // vectors of segments.
-            cv::Vec3f point = original_depth_map.at<cv::Vec3f>(y, x);
+            cv::Vec3f point;
+            cv::Vec3b original_color;
+            // = original_depth_map.at<cv::Vec3f>(y, x);
+            if(pcl_cloud !=NULL)
+            {
+              //LOG(WARNING)<<"PC 1";
+              pcl::PointXYZRGB pcl_point = pcl_cloud->at( x, y );
+              point = cv::Vec3f(pcl_point.x, pcl_point.y, pcl_point.z);
+              original_color = cv::Vec3f(pcl_point.r, pcl_point.g, pcl_point.b);
+            }
+            else
+            {
+              //LOG(WARNING)<<"DEPTH 1";
+              point = original_depth_map.at<cv::Vec3f>(y, x);
+              original_color = rgb_image.at<cv::Vec3b>(y, x);
+            }
             cv::Vec3f normal = normal_map.at<cv::Vec3f>(y, x);
-            cv::Vec3b original_color = rgb_image.at<cv::Vec3b>(y, x);
             cv::Vec3f color_f;
             constexpr bool kUseOriginalColors = true;
             if (kUseOriginalColors) {
@@ -945,7 +960,16 @@ void DepthSegmenter::labelMap(const cv::Mat& rgb_image,
           // if (color == cv::Vec3b(0, 0, 0)) {
           //   continue;
           // }
-          cv::Vec3f point = depth_map.at<cv::Vec3f>(y, x);
+          cv::Vec3f point;
+          if(pcl_cloud !=NULL)
+          {
+            pcl::PointXYZRGB pcl_point = pcl_cloud->at( x, y );
+            point = cv::Vec3f(pcl_point.x, pcl_point.y, pcl_point.z);
+          }
+          else
+          {
+            point = original_depth_map.at<cv::Vec3f>(y, x);
+          }
           cv::Vec3f normal = normal_map.at<cv::Vec3f>(y, x);
           cv::Vec3b original_color = rgb_image.at<cv::Vec3f>(y, x);
           cv::Vec3f color_f{float(original_color[0]), float(original_color[1]),
@@ -992,43 +1016,188 @@ void DepthSegmenter::labelMap(
     const SemanticInstanceSegmentation& instance_segmentation,
     const cv::Mat& depth_map, const cv::Mat& edge_map,
     const cv::Mat& normal_map, cv::Mat* labeled_map,
-    std::vector<cv::Mat>* segment_masks, std::vector<Segment>* segments) {
+    std::vector<cv::Mat>* segment_masks, std::vector<Segment>* segments, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud) 
+{
   labelMap(rgb_image, depth_image, depth_map, edge_map, normal_map, labeled_map,
-           segment_masks, segments);
+           segment_masks, segments, pcl_cloud);
+
+  std::vector<size_t>used_depth_masks_indices, used_instance_masks_indices;
 
   for (size_t i = 0u; i < segments->size(); ++i) {
     // For each DS segment identify the corresponding
     // maximally overlapping mask, if any.
     size_t maximally_overlapping_mask_index = 0u;
     int max_overlap_size = 0;
+    float max_normalized_overlap_size = 0.0f;
     int segment_size = cv::countNonZero((*segment_masks)[i]);
-
+    bool print_separator = false;
     for (size_t j = 0u; j < instance_segmentation.masks.size(); ++j) {
       // Search through all masks to find the maximally overlapping one.
-      cv::Mat mask_overlap;
-      cv::bitwise_and((*segment_masks)[i], instance_segmentation.masks[j],
-                      mask_overlap);
+      
+      if(used_instance_masks_indices.size() < 1 || (std::find(used_instance_masks_indices.begin(), used_instance_masks_indices.end(), j) != used_instance_masks_indices.end()))
+      {
+        cv::Mat mask_overlap;
+        cv::bitwise_and((*segment_masks)[i], instance_segmentation.masks[j],
+                        mask_overlap);
 
-      int overlap_size = cv::countNonZero(mask_overlap);
-      float normalized_overlap = (float)overlap_size / (float)segment_size;
+        int instance_segment_size = cv::countNonZero(instance_segmentation.masks[j]);
+        float max_segment_size = fmax(instance_segment_size, segment_size);
+        int overlap_size = cv::countNonZero(mask_overlap);
+        float normalized_overlap = (float)overlap_size / (float)max_segment_size;
 
-      if (overlap_size > max_overlap_size &&
-          normalized_overlap >
-              params_.semantic_instance_segmentation.overlap_threshold) {
-        maximally_overlapping_mask_index = j;
-        max_overlap_size = overlap_size;
+        if(overlap_size > 0)
+        {
+          LOG(WARNING)<<"\tDepth mask ind: "<<i<<" size: "<<segment_size<< "\t RGB mask ind: "<<j<<" size: "<<instance_segment_size<<"\t Mask overlap size: "<<normalized_overlap;
+          print_separator = true;
+        }
+        
+        if (overlap_size > max_overlap_size &&
+            normalized_overlap >
+                params_.semantic_instance_segmentation.overlap_threshold) {
+          maximally_overlapping_mask_index = j;
+          max_overlap_size = overlap_size;
+          max_normalized_overlap_size = normalized_overlap;
+        }
       }
     }
-
-    if (max_overlap_size > 0) {
+    if (print_separator)
+      LOG(WARNING)<<"-------------------------------------------";
+    if (max_overlap_size > 0 && max_normalized_overlap_size > params_.semantic_instance_segmentation.overlap_threshold) {
       // Found a maximally overlapping mask, assign
       // the corresponding semantic and instance labels.
+      LOG(WARNING)<<"\t\tDepth mask size"<<segment_size<< "\t RGB mask size: "<<cv::countNonZero(instance_segmentation.masks[maximally_overlapping_mask_index])<<"\t Mask overlap size: "<<max_normalized_overlap_size;
       (*segments)[i].semantic_label.insert(
           instance_segmentation.labels[maximally_overlapping_mask_index]);
       // Instance label 0u corresponds to a segment with no overlapping
       // mask, thus the assigned index is incremented by 1u.
       (*segments)[i].instance_label.insert(maximally_overlapping_mask_index +
                                            1u);
+      used_instance_masks_indices.push_back(maximally_overlapping_mask_index);
+      used_depth_masks_indices.push_back(i);
+    }
+  }
+}
+
+void DepthSegmenter::labelMap(
+    const cv::Mat& rgb_image, const cv::Mat& depth_image,
+    const SemanticInstanceSegmentation& instance_segmentation,
+    const cv::Mat& depth_map, const cv::Mat& edge_map,
+    const cv::Mat& normal_map, cv::Mat* labeled_map,
+    std::vector<cv::Mat>* segment_masks, std::vector<Segment>* segments, std::vector<Segment>& overlap_segments, 
+    const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud) 
+{
+  labelMap(rgb_image, depth_image, depth_map, edge_map, normal_map, labeled_map,
+           segment_masks, segments, pcl_cloud);
+  
+  cv::Mat original_depth_map;
+  cv::rgbd::depthTo3d(depth_image, depth_camera_.getCameraMatrix(),
+                      original_depth_map);
+  std::vector<size_t>used_depth_masks_indices, used_instance_masks_indices;
+  overlap_segments.clear();
+  for (size_t i = 0u; i < instance_segmentation.masks.size(); ++i) 
+  {
+    size_t maximally_overlapping_mask_index = 0u;
+    int max_overlap_size = 0;
+    float max_normalized_overlap_size_min_seg = 0.0f;
+    float max_normalized_overlap_size_instance = 0.0f;
+    bool found_atleast_one_overlap = false; 
+    int instance_segment_size = cv::countNonZero(instance_segmentation.masks[i]);
+    for (size_t j = 0u; j < segments->size(); ++j)
+    {
+      if(used_depth_masks_indices.size() < 1 || (std::find(used_depth_masks_indices.begin(), used_depth_masks_indices.end(), j) != used_depth_masks_indices.end()))
+      {
+        int depth_segment_size = cv::countNonZero((*segment_masks)[j]);
+        cv::Mat mask_overlap;
+        cv::bitwise_and((*segment_masks)[j], instance_segmentation.masks[i],
+                        mask_overlap);
+        
+        float max_segment_size = fmax(instance_segment_size, depth_segment_size);
+        float min_segment_size = fmin(instance_segment_size, depth_segment_size);
+        int overlap_size = cv::countNonZero(mask_overlap);
+
+        float normalized_overlap_max_seg = (float)overlap_size / (float)max_segment_size;
+        float normalized_overlap_min_seg = (float)overlap_size / (float)min_segment_size;
+        float normalized_overlap_depth = (float)overlap_size / (float)depth_segment_size;
+        float normalized_overlap_instance = (float)overlap_size / (float)instance_segment_size;
+
+        if(overlap_size > 0 && normalized_overlap_depth > 0.5 && normalized_overlap_instance > params_.semantic_instance_segmentation.overlap_threshold)
+        {
+          found_atleast_one_overlap = true;
+          if(normalized_overlap_instance > max_normalized_overlap_size_instance)
+          {
+            maximally_overlapping_mask_index = j;
+            max_normalized_overlap_size_instance = normalized_overlap_instance;
+          }
+        }
+      }
+    }
+    if(found_atleast_one_overlap)
+    {
+      cv::Mat max_overlap_mask;
+      cv::bitwise_and((*segment_masks)[maximally_overlapping_mask_index], instance_segmentation.masks[i],
+                        max_overlap_mask);
+      (*segments)[maximally_overlapping_mask_index].semantic_label.insert(
+          instance_segmentation.labels[maximally_overlapping_mask_index]);
+      // Instance label 0u corresponds to a segment with no overlapping
+      // mask, thus the assigned index is incremented by 1u.
+      (*segments)[maximally_overlapping_mask_index].instance_label.insert(maximally_overlapping_mask_index +
+                                           1u);
+      Segment overlap_segment;
+      running_index_++;
+      createSegmentFromOverlapMask(rgb_image, depth_image, depth_map, edge_map, normal_map, labeled_map, original_depth_map, max_overlap_mask,
+           (*segments)[maximally_overlapping_mask_index], overlap_segment, running_index_, pcl_cloud); 
+      overlap_segments.push_back(overlap_segment);
+      
+      used_depth_masks_indices.push_back(maximally_overlapping_mask_index);
+    }
+  }
+}
+
+void DepthSegmenter::createSegmentFromOverlapMask(const cv::Mat& rgb_image, const cv::Mat& depth_image,
+                                  const cv::Mat& depth_map, const cv::Mat& edge_map,
+                                  const cv::Mat& normal_map, cv::Mat* labeled_map,
+                                  const cv::Mat& original_depth_map, 
+                                  const cv::Mat& overlap_mask, const Segment& depth_segment, Segment& overlap_segment, size_t label, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcl_cloud)
+{
+  for(size_t r = 0; r < overlap_mask.rows; r++)
+  {
+    for(size_t c = 0; c < overlap_mask.cols; c++)
+    {
+      if(overlap_mask.at<uint8_t>(r,c) > 0)
+      {
+
+        cv::Vec3f point;
+        cv::Vec3b original_color;
+        // = original_depth_map.at<cv::Vec3f>(y, x);
+        if(pcl_cloud !=NULL)
+        {
+          //LOG(WARNING)<<"PC 1";
+          pcl::PointXYZRGB pcl_point = pcl_cloud->at( c, r);
+          point = cv::Vec3f(pcl_point.x, pcl_point.y, pcl_point.z);
+          original_color = cv::Vec3f(pcl_point.r, pcl_point.g, pcl_point.b);
+        }
+        else
+        {
+          //LOG(WARNING)<<"DEPTH 1";
+          point = original_depth_map.at<cv::Vec3f>(r,c);
+          original_color = rgb_image.at<cv::Vec3b>(r,c);
+        }
+        cv::Vec3f normal = normal_map.at<cv::Vec3f>(r,c);
+        cv::Vec3f color_f;
+        constexpr bool kUseOriginalColors = true;
+        color_f = cv::Vec3f(static_cast<float>(original_color[0]),
+                              static_cast<float>(original_color[1]),
+                              static_cast<float>(original_color[2]));
+
+        std::vector<cv::Vec3f> rgb_point_with_normals{point, normal,
+                                                      color_f};
+        overlap_segment.points.push_back(point);
+        overlap_segment.normals.push_back(normal);
+        overlap_segment.original_colors.push_back(color_f);
+        overlap_segment.label.insert(label);
+      }
+      overlap_segment.instance_label.insert(label);
+      overlap_segment.semantic_label.insert(1u);
     }
   }
 }

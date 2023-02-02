@@ -36,6 +36,7 @@ endif()
 set(WITH_MASKRCNNROS ON)
 
 if (WITH_MASKRCNNROS)
+
   find_package(mask_rcnn_ros QUIET)
   if (NOT mask_rcnn_ros_FOUND)
     message(WARNING "The semantic instance segmentation mode is enabled but the mask_rcnn_ros package could not be found, trying to build it.")
@@ -49,6 +50,7 @@ if (WITH_MASKRCNNROS)
   endif()
 
   if (mask_rcnn_ros_FOUND)
+    message(WARNING "mask_rcnn_ros_FOUND")
     message(STATUS "mask_rcnn_ros is found.")
     add_definitions(-DMASKRCNNROS_AVAILABLE)
     include_directories(include ${catkin_INCLUDE_DIRS} ${mask_rcnn_ros_INCLUDE_DIRS} )
@@ -56,6 +58,7 @@ if (WITH_MASKRCNNROS)
     message(WARNING "Could not find the mask_rcnn_ros package, please add the mask_rcnn_ros package to the current workspace for semantic instance segmentation support.")
   endif()
 endif()
+add_definitions(-DMASKRCNNROS_AVAILABLE)
 
 
 cs_add_library(${PROJECT_NAME}
