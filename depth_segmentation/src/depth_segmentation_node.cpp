@@ -359,6 +359,9 @@ class DepthSegmentationNode {
       pcl::PointCloud<PointSurfelLabel>::Ptr scene_pcl(
           new pcl::PointCloud<PointSurfelLabel>);
       for (depth_segmentation::Segment segment : segments) {
+        if(segment.is_pepper == false)
+          continue;
+        ROS_INFO("Publishing pepper depth segment");
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
@@ -642,7 +645,7 @@ class DepthSegmentationNode {
         sq_sum += (joint_state_.position[i] - prev_joint_state_.position[i] )*(joint_state_.position[i] - prev_joint_state_.position[i]);
     }
     double dist_norm = sqrt(sq_sum);
-    if(dist_norm > 0.007)
+    if(dist_norm > 0.015)
     {
       last_robot_moved_time_ = joint_state_.header.stamp;
       ROS_WARN_STREAM_THROTTLE(1, "joint distance norm is greater than 0.007: "<<dist_norm);
@@ -653,7 +656,7 @@ class DepthSegmentationNode {
         ROS_WARN_STREAM_THROTTLE(1.0, "Robot still moving hence not processing");
         return;
     }
-
+    ROS_INFO_STREAM_THROTTLE(5.0, "imageSegmentationCallback"); 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_cloud((new pcl::PointCloud<pcl::PointXYZRGB>));
     pcl::fromROSMsg(*pc2_msg, *pcl_cloud);
     if (camera_info_ready_) {
@@ -688,10 +691,12 @@ class DepthSegmentationNode {
         depth_segmenter_.labelMap(cv_rgb_image->image, rescaled_depth,
                                   instance_segmentation, depth_map, edge_map,
                                   normal_map, &label_map, &segment_masks,
-                                  &segments, overlap_segments, pcl_cloud);
+                                  &segments, pcl_cloud);
 
-        if (overlap_segments.size() > 0u) {
-          publish_segments(overlap_segments, depth_msg->header);
+        //ROS_INFO_STREAM_THROTTLE(5.0, "Before if publishing segments"); 
+        if (segments.size() > 0u) {
+          ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
+          publish_segments(segments, depth_msg->header);
         }
       }
 

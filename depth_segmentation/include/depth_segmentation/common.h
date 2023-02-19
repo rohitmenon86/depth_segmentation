@@ -21,7 +21,22 @@ struct Segment {
   std::set<size_t> label;
   std::set<size_t> instance_label;
   std::set<size_t> semantic_label;
+  bool is_pepper = false; 
 };
+
+struct OverlapSegment{
+  Segment depth_segment;
+  cv::Mat overlapping_mask;
+  bool use_overlap_mask= false;
+
+  OverlapSegment(const Segment& segment, const cv::Mat& mask): depth_segment(segment), overlapping_mask(mask), use_overlap_mask(true)
+  {}
+  OverlapSegment(const Segment& segment): depth_segment(segment), use_overlap_mask(false)
+  {}
+  OverlapSegment(const cv::Mat& mask): overlapping_mask(mask), use_overlap_mask(true)
+  {}
+};
+
 
 const static std::string kDebugWindowName = "DebugImages";
 constexpr bool kUseTracker = false;
@@ -101,7 +116,7 @@ enum class LabelMapMethod {
 
 struct LabelMapParams {
   LabelMapMethod method = LabelMapMethod::kContour;
-  size_t min_size = 500u;
+  size_t min_size = 50u;
   bool use_inpaint = false;
   size_t inpaint_method = 0u;
   bool display = true;
@@ -109,7 +124,7 @@ struct LabelMapParams {
 
 struct SemanticInstanceSegmentationParams {
   bool enable = false;
-  float overlap_threshold = 0.8f;
+  float overlap_threshold = 0.6f;
 };
 
 struct IsNan {

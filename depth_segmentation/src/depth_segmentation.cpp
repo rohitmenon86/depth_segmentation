@@ -1043,11 +1043,11 @@ void DepthSegmenter::labelMap(
         int instance_segment_size = cv::countNonZero(instance_segmentation.masks[j]);
         float max_segment_size = fmax(instance_segment_size, segment_size);
         int overlap_size = cv::countNonZero(mask_overlap);
-        float normalized_overlap = (float)overlap_size / (float)max_segment_size;
+        float normalized_overlap = (float)overlap_size / (float)segment_size;
 
         if(overlap_size > 0)
         {
-          LOG(WARNING)<<"\tDepth mask ind: "<<i<<" size: "<<segment_size<< "\t RGB mask ind: "<<j<<" size: "<<instance_segment_size<<"\t Mask overlap size: "<<normalized_overlap;
+          //LOG(WARNING)<<"\tDepth mask ind: "<<i<<" size: "<<segment_size<< "\t RGB mask ind: "<<j<<" size: "<<instance_segment_size<<"\t Mask overlap size: "<<normalized_overlap;
           print_separator = true;
         }
         
@@ -1060,8 +1060,8 @@ void DepthSegmenter::labelMap(
         }
       }
     }
-    if (print_separator)
-      LOG(WARNING)<<"-------------------------------------------";
+    // if (print_separator)
+    //   LOG(WARNING)<<"-------------------------------------------";
     if (max_overlap_size > 0 && max_normalized_overlap_size > params_.semantic_instance_segmentation.overlap_threshold) {
       // Found a maximally overlapping mask, assign
       // the corresponding semantic and instance labels.
@@ -1072,6 +1072,7 @@ void DepthSegmenter::labelMap(
       // mask, thus the assigned index is incremented by 1u.
       (*segments)[i].instance_label.insert(maximally_overlapping_mask_index +
                                            1u);
+      (*segments)[i].is_pepper = true;                                      
       used_instance_masks_indices.push_back(maximally_overlapping_mask_index);
       used_depth_masks_indices.push_back(i);
     }
@@ -1120,7 +1121,7 @@ void DepthSegmenter::labelMap(
         float normalized_overlap_depth = (float)overlap_size / (float)depth_segment_size;
         float normalized_overlap_instance = (float)overlap_size / (float)instance_segment_size;
 
-        if(overlap_size > 0 && normalized_overlap_depth > 0.5 && normalized_overlap_instance > params_.semantic_instance_segmentation.overlap_threshold)
+        if(overlap_size > 0 && normalized_overlap_depth > 0.5 && normalized_overlap_instance > 0.5) //params_.semantic_instance_segmentation.overlap_threshold)
         {
           found_atleast_one_overlap = true;
           if(normalized_overlap_instance > max_normalized_overlap_size_instance)
@@ -1133,6 +1134,7 @@ void DepthSegmenter::labelMap(
     }
     if(found_atleast_one_overlap)
     {
+      LOG(WARNING)<<"Found an overlap";
       cv::Mat max_overlap_mask;
       cv::bitwise_and((*segment_masks)[maximally_overlapping_mask_index], instance_segmentation.masks[i],
                         max_overlap_mask);

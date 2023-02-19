@@ -9,17 +9,17 @@ namespace depth_segmentation {
 const static std::string kRgbImageTopic = "/camera/color/image_raw";
 const static std::string kRgbCameraInfoTopic = "/camera/color/camera_info";
 const static std::string kDepthImageTopic =
-    "/camera/aligned_depth_to_color/image_raw";
+    "/camera/depth/image_raw";
 const static std::string kDepthCameraInfoTopic =
-    "/camera/aligned_depth_to_color/camera_info";
+    "/camera/depth/camera_info";
 const static std::string kSemanticInstanceSegmentationTopic =
     "/mask_rcnn/result";
 
-const static std::string kPointCloud2Topic = "/camera/aligned_depth_to_color/points";  
+const static std::string kPointCloud2Topic = "/camera/depth/points";  
 const static std::string kJointStatesTopic = "/joint_states";
 
-const static std::string kTfWorldFrame = "map";
-const static std::string kTfDepthCameraFrame = "camera0";
+const static std::string kTfWorldFrame = "world";
+const static std::string kTfDepthCameraFrame = "camera_depth_frame";
 
 }  // namespace depth_segmentation
 
