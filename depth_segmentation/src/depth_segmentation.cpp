@@ -1121,7 +1121,7 @@ void DepthSegmenter::labelMap(
         float normalized_overlap_depth = (float)overlap_size / (float)depth_segment_size;
         float normalized_overlap_instance = (float)overlap_size / (float)instance_segment_size;
 
-        if(overlap_size > 0 && normalized_overlap_depth > 0.5 && normalized_overlap_instance > 0.5) //params_.semantic_instance_segmentation.overlap_threshold)
+        if(overlap_size > 0 && normalized_overlap_depth > 0.7 && normalized_overlap_instance > 0.7) //params_.semantic_instance_segmentation.overlap_threshold)
         {
           found_atleast_one_overlap = true;
           if(normalized_overlap_instance > max_normalized_overlap_size_instance)
