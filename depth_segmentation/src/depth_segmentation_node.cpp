@@ -361,7 +361,7 @@ class DepthSegmentationNode {
       for (depth_segmentation::Segment segment : segments) {
         //if(segment.is_pepper == false)
           //continue;
-        ROS_INFO("Publishing pepper depth segment");
+        //ROS_INFO("Publishing pepper depth segment");
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
