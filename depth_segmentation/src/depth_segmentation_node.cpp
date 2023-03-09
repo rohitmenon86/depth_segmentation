@@ -92,6 +92,11 @@ class DepthSegmentationNode {
     node_handle_.param<std::string>("joint_states_topic", joint_states_topic_,
                                     depth_segmentation::kJointStatesTopic);
 
+    node_handle_.param<bool>("forward_labeled_segments_only", forward_labeled_segments_only_,
+                                    depth_segmentation::kForwardLabeledSegmentsOnly);  
+    node_handle_.param<bool>("use_overlap_bits_only", use_overlap_bits_only_,
+                                    depth_segmentation::kUSeOverlapBitsOnly);
+
     depth_image_sub_ = new image_transport::SubscriberFilter(
         image_transport_, depth_image_topic_, 1);
     rgb_image_sub_ = new image_transport::SubscriberFilter(image_transport_,
@@ -197,6 +202,9 @@ class DepthSegmentationNode {
   std::string joint_states_topic_;
   std::string world_frame_;
   std::string camera_frame_;
+
+  bool forward_labeled_segments_only_;
+  bool use_overlap_bits_only_;
 
   image_transport::SubscriberFilter* depth_image_sub_;
   image_transport::SubscriberFilter* rgb_image_sub_;
@@ -359,9 +367,9 @@ class DepthSegmentationNode {
       pcl::PointCloud<PointSurfelLabel>::Ptr scene_pcl(
           new pcl::PointCloud<PointSurfelLabel>);
       for (depth_segmentation::Segment segment : segments) {
-        //if(segment.is_pepper == false)
-          //continue;
-        //ROS_INFO("Publishing pepper depth segment");
+        if(forward_labeled_segments_only_ && segment.is_pepper == false)
+          continue;
+          ROS_INFO("Publishing pepper depth segment");
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
@@ -688,16 +696,32 @@ class DepthSegmentationNode {
         std::vector<depth_segmentation::Segment> overlap_segments;
         std::vector<cv::Mat> segment_masks;
 
-        depth_segmenter_.labelMap(cv_rgb_image->image, rescaled_depth,
+        
+
+        //ROS_INFO_STREAM_THROTTLE(5.0, "Before if publishing segments"); 
+        if(use_overlap_bits_only_)
+        {
+          depth_segmenter_.labelMap(cv_rgb_image->image, rescaled_depth,
+                                instance_segmentation, depth_map, edge_map,
+                                normal_map, &label_map, &segment_masks,
+                                &segments, overlap_segments, pcl_cloud);
+          if (segments.size() > 0u) {
+              ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
+              publish_segments(segments, depth_msg->header);
+          }
+        }
+        else
+        {
+          depth_segmenter_.labelMap(cv_rgb_image->image, rescaled_depth,
                                   instance_segmentation, depth_map, edge_map,
                                   normal_map, &label_map, &segment_masks,
                                   &segments, pcl_cloud);
-
-        //ROS_INFO_STREAM_THROTTLE(5.0, "Before if publishing segments"); 
-        if (segments.size() > 0u) {
-          ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
-          publish_segments(segments, depth_msg->header);
+          if (segments.size() > 0u) {
+            ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
+            publish_segments(segments, depth_msg->header);
+          }
         }
+        
       }
 
       // Update the member images to the new images.

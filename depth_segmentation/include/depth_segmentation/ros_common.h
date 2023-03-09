@@ -21,6 +21,9 @@ const static std::string kJointStatesTopic = "/joint_states";
 const static std::string kTfWorldFrame = "world";
 const static std::string kTfDepthCameraFrame = "camera_depth_frame";
 
+const bool kForwardLabeledSegmentsOnly = true; 
+const bool kUSeOverlapBitsOnly = true;
+
 }  // namespace depth_segmentation
 
 #endif  // DEPTH_SEGMENTATION_ROS_COMMON_H_

@@ -2,3 +2,5 @@ depth_image_sub_topic: /camera/depth/image_raw_noisy #/camera/depth/image_raw  #
 rgb_image_sub_topic: /camera/color/image_raw
 depth_camera_info_sub_topic: /camera/depth/camera_info #/camera/aligned_depth_to_color/camera_info
 rgb_camera_info_sub_topic: /camera/color/camera_info
+forward_labeled_segments_only: true
+use_overlap_bits_only: true
