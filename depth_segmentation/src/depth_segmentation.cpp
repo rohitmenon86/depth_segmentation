@@ -1109,9 +1109,11 @@ void DepthSegmenter::labelMap(
           instance_segmentation.labels[maximally_overlapping_mask_index]);
       // Instance label 0u corresponds to a segment with no overlapping
       // mask, thus the assigned index is incremented by 1u.
-      (*segments)[i].instance_label.insert(maximally_overlapping_mask_index +
-                                           1u);
+      //(*segments)[i].instance_label.insert(maximally_overlapping_mask_index +
+      //                                     1u);
+      (*segments)[i].instance_label.insert(instance_segmentation.instance_ids[maximally_overlapping_mask_index]);
       LOG(INFO)<<"Overlapping mask idx "<<int(maximally_overlapping_mask_index);
+      (*segments)[i].is_pepper = true; 
     }
   }
   LOG(INFO)<<"No of overlap segments: "<<idx;
@@ -1180,8 +1182,7 @@ void DepthSegmenter::labelMap(
           instance_segmentation.labels[maximally_overlapping_mask_index]);
       // Instance label 0u corresponds to a segment with no overlapping
       // mask, thus the assigned index is incremented by 1u.
-      (*segments)[maximally_overlapping_mask_index].instance_label.insert(maximally_overlapping_mask_index +
-                                           1u);
+      (*segments)[maximally_overlapping_mask_index].instance_label.insert(instance_segmentation.instance_ids[maximally_overlapping_mask_index]);
       Segment overlap_segment;
       running_index_++;
       createSegmentFromOverlapMask(rgb_image, depth_image, depth_map, edge_map, normal_map, labeled_map, original_depth_map, max_overlap_mask,
@@ -1238,6 +1239,7 @@ void DepthSegmenter::createSegmentFromOverlapMask(const cv::Mat& rgb_image, cons
       }
       overlap_segment.instance_label.insert(label);
       overlap_segment.semantic_label.insert(1u);
+      overlap_segment.is_pepper = true;
     }
   }
 }

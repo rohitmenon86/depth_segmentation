@@ -35,7 +35,7 @@ struct PointSurfelLabel {
   PCL_ADD_POINT4D;
   PCL_ADD_NORMAL4D;
   PCL_ADD_RGB;
-  uint8_t instance_label;
+  uint32_t instance_label;
   uint8_t semantic_label;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -45,7 +45,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointSurfelLabel,
     (float, x, x)(float, y, y)(float, z, z)(float, normal_x, normal_x)(
         float, normal_y, normal_y)(float, normal_z, normal_z)(float, rgb, rgb)(
-        uint8_t, instance_label, instance_label)(uint8_t, semantic_label,
+        uint32_t, instance_label, instance_label)(uint8_t, semantic_label,
                                                  semantic_label))
 
 class DepthSegmentationNode {
@@ -161,6 +161,7 @@ class DepthSegmentationNode {
                              params_.visualize_segmented_scene);
 
     last_robot_moved_time_ = ros::Time::now();
+    ROS_INFO("Constructor");
   }
 
  private:
@@ -369,7 +370,7 @@ class DepthSegmentationNode {
       for (depth_segmentation::Segment segment : segments) {
         if(forward_labeled_segments_only_ && segment.is_pepper == false)
           continue;
-          ROS_INFO("Publishing pepper depth segment");
+        ROS_INFO("Publishing pepper depth segment");
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
@@ -705,9 +706,9 @@ class DepthSegmentationNode {
                                 instance_segmentation, depth_map, edge_map,
                                 normal_map, &label_map, &segment_masks,
                                 &segments, overlap_segments, pcl_cloud);
-          if (segments.size() > 0u) {
+          if (overlap_segments.size() > 0u) {
               ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
-              publish_segments(segments, depth_msg->header);
+              publish_segments(overlap_segments, depth_msg->header);
           }
         }
         else
