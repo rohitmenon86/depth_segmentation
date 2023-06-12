@@ -1112,7 +1112,7 @@ void DepthSegmenter::labelMap(
       //(*segments)[i].instance_label.insert(maximally_overlapping_mask_index +
       //                                     1u);
       (*segments)[i].instance_label.insert(instance_segmentation.instance_ids[maximally_overlapping_mask_index]);
-      LOG(INFO)<<"Overlapping mask idx "<<int(maximally_overlapping_mask_index);
+      //LOG(INFO)<<"Overlapping mask idx "<<int(maximally_overlapping_mask_index);
       (*segments)[i].is_pepper = true; 
     }
   }
