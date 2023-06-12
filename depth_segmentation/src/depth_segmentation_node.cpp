@@ -370,7 +370,8 @@ class DepthSegmentationNode {
       for (depth_segmentation::Segment segment : segments) {
         if(forward_labeled_segments_only_ && segment.is_pepper == false)
           continue;
-        ROS_INFO("Publishing pepper depth segment");
+        if(segment.is_pepper)
+          ROS_INFO_STREAM("Publishing pepper depth segment "<<int32_t(*segment.instance_label.begin()));
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
@@ -450,6 +451,7 @@ class DepthSegmentationNode {
           cv_mask_image->image.clone());
       semantic_instance_segmentation->labels.push_back(
           segmentation_msg->class_ids[i]);
+      semantic_instance_segmentation->instance_ids.push_back(segmentation_msg->instance_ids[i]);
     }
   }
 #endif
@@ -643,8 +645,10 @@ class DepthSegmentationNode {
       const mask_rcnn_ros::Result::ConstPtr& segmentation_msg,
       const sensor_msgs::PointCloud2::ConstPtr& pc2_msg) {
     depth_segmentation::SemanticInstanceSegmentation instance_segmentation;
+    LOG(INFO)<<"imageSegmentationCallback";
     semanticInstanceSegmentationFromRosMsg(segmentation_msg,
                                            &instance_segmentation);
+
     if(pc2_msg == NULL)
       LOG(WARNING)<<"Point Cloud2 msg NULL";
 
@@ -665,7 +669,7 @@ class DepthSegmentationNode {
         ROS_WARN_STREAM_THROTTLE(1.0, "Robot still moving hence not processing");
         return;
     }
-    ROS_INFO_STREAM_THROTTLE(5.0, "imageSegmentationCallback"); 
+    //ROS_INFO_STREAM_THROTTLE(5.0, "imageSegmentationCallback"); 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_cloud((new pcl::PointCloud<pcl::PointXYZRGB>));
     pcl::fromROSMsg(*pc2_msg, *pcl_cloud);
     if (camera_info_ready_) {
