@@ -134,6 +134,7 @@ class CameraTracker {
 struct SemanticInstanceSegmentation {
   std::vector<cv::Mat> masks;
   std::vector<int> labels;
+  std::vector<uint32_t> instance_ids;
 };
 
 class DepthSegmenter {
