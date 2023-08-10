@@ -1219,7 +1219,7 @@ void DepthSegmenter::createSegmentFromOverlapMask(const cv::Mat& rgb_image, cons
         }
         else
         {
-          //LOG(WARNING)<<"DEPTH 1";
+          LOG(WARNING)<<"DEPTH 1";
           point = original_depth_map.at<cv::Vec3f>(r,c);
           original_color = rgb_image.at<cv::Vec3b>(r,c);
         }

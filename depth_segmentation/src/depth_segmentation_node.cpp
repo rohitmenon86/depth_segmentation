@@ -96,6 +96,12 @@ class DepthSegmentationNode {
                                     depth_segmentation::kForwardLabeledSegmentsOnly);  
     node_handle_.param<bool>("use_overlap_bits_only", use_overlap_bits_only_,
                                     depth_segmentation::kUSeOverlapBitsOnly);
+    node_handle_.param<bool>("publish_while_moving", publish_while_moving_,
+                                    depth_segmentation::kPublishWhileMoving);
+    node_handle_.param<float>("max_joint_difference", max_joint_difference_,
+                                    depth_segmentation::kMaxJointDifference);
+    node_handle_.param<float>("wait_time_stationary_", wait_time_stationary_,
+                                    depth_segmentation::kWaitTimeAfterStationary);
 
     depth_image_sub_ = new image_transport::SubscriberFilter(
         image_transport_, depth_image_topic_, 1);
@@ -130,10 +136,10 @@ class DepthSegmentationNode {
       image_segmentation_sync_policy_ =
           new message_filters::Synchronizer<ImageSegmentationSyncPolicy>(
               ImageSegmentationSyncPolicy(kQueueSize), *depth_image_sub_,
-              *rgb_image_sub_, *instance_segmentation_sub_, *pc2_sub_);
+              *rgb_image_sub_, *instance_segmentation_sub_); //, *pc2_sub_);
 
       image_segmentation_sync_policy_->registerCallback(boost::bind(
-          &DepthSegmentationNode::imageSegmentationCallback, this, _1, _2, _3, _4));
+          &DepthSegmentationNode::imageSegmentationCallback, this, _1, _2, _3)); //, _4));
 #endif
     } else {
       image_sync_policy_ = new message_filters::Synchronizer<ImageSyncPolicy>(
@@ -175,7 +181,7 @@ class DepthSegmentationNode {
 
 #ifdef MASKRCNNROS_AVAILABLE
   typedef message_filters::sync_policies::ApproximateTime<
-      sensor_msgs::Image, sensor_msgs::Image, mask_rcnn_ros::Result, sensor_msgs::PointCloud2>
+      sensor_msgs::Image, sensor_msgs::Image, mask_rcnn_ros::Result> //, sensor_msgs::PointCloud2>
       ImageSegmentationSyncPolicy;
 #endif
 
@@ -227,6 +233,10 @@ class DepthSegmentationNode {
 
   message_filters::Synchronizer<CameraInfoSyncPolicy>* camera_info_sync_policy_;
 
+  bool publish_while_moving_;
+  float max_joint_difference_;
+  float wait_time_stationary_;
+
 #ifdef MASKRCNNROS_AVAILABLE
   message_filters::Subscriber<mask_rcnn_ros::Result>*
       instance_segmentation_sub_;
@@ -268,9 +278,9 @@ class DepthSegmentationNode {
     point_pcl->normal_x = normals[0];
     point_pcl->normal_y = normals[1];
     point_pcl->normal_z = normals[2];
-    point_pcl->r = colors[0];
-    point_pcl->g = colors[1];
-    point_pcl->b = colors[2];
+    point_pcl->r = 255; //colors[0];
+    point_pcl->g = 0; //colors[1]; //0.0; //colors[1];
+    point_pcl->b = 0; //colors[2]; //0.0; //colors[2];
   }
 
   void fillPoint(const cv::Vec3f& point, const cv::Vec3f& normals,
@@ -282,9 +292,9 @@ class DepthSegmentationNode {
     point_pcl->normal_x = normals[0];
     point_pcl->normal_y = normals[1];
     point_pcl->normal_z = normals[2];
-    point_pcl->r = colors[0];
-    point_pcl->g = colors[1];
-    point_pcl->b = colors[2];
+    point_pcl->r = 255; //colors[0];
+    point_pcl->g = 0; //colors[1];
+    point_pcl->b = 0; //colors[2];
 
     point_pcl->semantic_label = semantic_label;
     point_pcl->instance_label = instance_label;
@@ -343,16 +353,33 @@ class DepthSegmentationNode {
   {
     if((joint_state.header.stamp - joint_state_.header.stamp).toSec() < 0.05)
       return;
+
+    sensor_msgs::JointState head_state;
+    head_state.header = joint_state.header;
+    for(int i = 0; i < joint_state.name.size(); i++)
+    {
+      if(joint_state.name[i].find("head_joint") != std::string::npos)
+      {
+        head_state.name.push_back(joint_state.name[i]);
+        head_state.position.push_back(joint_state.position[i]);
+      }
+    }
+    if(head_state.name.size()< 6)
+    {
+      if(head_state.name.size() > 0)
+        ROS_WARN("Full head state not recd");
+      return;
+    }
     if(joint_state_recd_) 
     {
       prev_joint_state_ = joint_state_;
     }
     else
     {
-      prev_joint_state_ = joint_state;
+      prev_joint_state_ = head_state;
       joint_state_recd_ = true;
     }
-    joint_state_ = joint_state;
+    joint_state_ = head_state;
   }
 
   void publish_segments(
@@ -642,36 +669,47 @@ class DepthSegmentationNode {
   void imageSegmentationCallback(
       const sensor_msgs::Image::ConstPtr& depth_msg,
       const sensor_msgs::Image::ConstPtr& rgb_msg,
-      const mask_rcnn_ros::Result::ConstPtr& segmentation_msg,
-      const sensor_msgs::PointCloud2::ConstPtr& pc2_msg) {
+      const mask_rcnn_ros::Result::ConstPtr& segmentation_msg) //,
+      //const sensor_msgs::PointCloud2::ConstPtr& pc2_msg) 
+    {
     depth_segmentation::SemanticInstanceSegmentation instance_segmentation;
-    LOG(INFO)<<"imageSegmentationCallback";
+    ROS_WARN_STREAM_THROTTLE(20, "imageSegmentationCallback");
     semanticInstanceSegmentationFromRosMsg(segmentation_msg,
                                            &instance_segmentation);
+    
+    sensor_msgs::PointCloud2::ConstPtr pc2_msg = NULL;
+    // if(pc2_msg == NULL)
+    //   LOG(WARNING)<<"Point Cloud2 msg NULL";
+    // else
+    //   ROS_WARN_STREAM_THROTTLE(10, "point cloud frame id: "<<pc2_msg->header.frame_id);
 
-    if(pc2_msg == NULL)
-      LOG(WARNING)<<"Point Cloud2 msg NULL";
+    if(publish_while_moving_ == false)
+    {
+      double sq_sum = 0; 
+      for(size_t i = 0; i < joint_state_.position.size(); ++i)
+      {
+          sq_sum += (joint_state_.position[i] - prev_joint_state_.position[i] )*(joint_state_.position[i] - prev_joint_state_.position[i]);
+      }
+      double dist_norm = sqrt(sq_sum);
 
-    double sq_sum = 0; 
-    for(size_t i = 0; i < joint_state_.position.size(); ++i)
-    {
-        sq_sum += (joint_state_.position[i] - prev_joint_state_.position[i] )*(joint_state_.position[i] - prev_joint_state_.position[i]);
-    }
-    double dist_norm = sqrt(sq_sum);
-    if(dist_norm > 0.015)
-    {
-      last_robot_moved_time_ = joint_state_.header.stamp;
-      ROS_WARN_STREAM_THROTTLE(1, "joint distance norm is greater than 0.007: "<<dist_norm);
-    }
-    ROS_WARN_STREAM_THROTTLE(20, "joint distance norm : "<<dist_norm);
-    if(fabs((depth_msg->header.stamp- last_robot_moved_time_).toSec()) < 0.1)
-    {
-        ROS_WARN_STREAM_THROTTLE(1.0, "Robot still moving hence not processing");
-        return;
+      if(dist_norm > max_joint_difference_)
+      {
+        last_robot_moved_time_ = joint_state_.header.stamp;
+        ROS_WARN_STREAM_THROTTLE(1, "joint distance norm is greater than threshold: "<<dist_norm); //<<"js: "<<joint_state_<<"prev: "<<prev_joint_state_);
+      }
+      ROS_WARN_STREAM_THROTTLE(20, "joint distance norm : "<<dist_norm);
+      if(fabs((depth_msg->header.stamp- last_robot_moved_time_).toSec()) < wait_time_stationary_)
+      {
+          ROS_WARN_STREAM_THROTTLE(1.0, "Robot still moving hence not processing");
+          return;
+      }
     }
     //ROS_INFO_STREAM_THROTTLE(5.0, "imageSegmentationCallback"); 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_cloud((new pcl::PointCloud<pcl::PointXYZRGB>));
-    pcl::fromROSMsg(*pc2_msg, *pcl_cloud);
+    if(pc2_msg != NULL)
+      pcl::fromROSMsg(*pc2_msg, *pcl_cloud);
+    else
+    pcl_cloud = NULL;
     if (camera_info_ready_) {
       cv_bridge::CvImagePtr cv_rgb_image(new cv_bridge::CvImage);
       cv_rgb_image = cv_bridge::toCvCopy(rgb_msg, rgb_msg->encoding);
@@ -711,7 +749,7 @@ class DepthSegmentationNode {
                                 normal_map, &label_map, &segment_masks,
                                 &segments, overlap_segments, pcl_cloud);
           if (overlap_segments.size() > 0u) {
-              ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
+              ROS_INFO_STREAM_THROTTLE(1.0, "Before publishing segments"); 
               publish_segments(overlap_segments, depth_msg->header);
           }
         }
@@ -722,7 +760,7 @@ class DepthSegmentationNode {
                                   normal_map, &label_map, &segment_masks,
                                   &segments, pcl_cloud);
           if (segments.size() > 0u) {
-            ROS_INFO_STREAM_THROTTLE(0.5, "Before publishing segments"); 
+            ROS_INFO_STREAM_THROTTLE(1.0, "Before publishing segments"); 
             publish_segments(segments, depth_msg->header);
           }
         }

@@ -23,6 +23,9 @@ const static std::string kTfDepthCameraFrame = "camera_color_optical_frame";
 
 const bool kForwardLabeledSegmentsOnly = true; 
 const bool kUSeOverlapBitsOnly = true;
+const bool kPublishWhileMoving = false;
+const float kMaxJointDifference = 0.005f;
+const float kWaitTimeAfterStationary = 0.2f;
 
 }  // namespace depth_segmentation
 

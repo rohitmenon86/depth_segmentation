@@ -1,5 +1,5 @@
 <launch>
-  <arg name="sensor_name" default="zed2i" />
+  <arg name="sensor_name" default="gazebo" />
   <arg name="visualize" default="false" />
   
   <!-- <node name="depth_segmentation_node" pkg="depth_segmentation" type="depth_segmentation_node" output="screen" launch-prefix="gdb -ex run args"> -->

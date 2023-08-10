@@ -34,7 +34,7 @@ else()
 endif()
 
 set(WITH_MASKRCNNROS ON)
-
+message(STATUS, "Check")
 if (WITH_MASKRCNNROS)
 
   find_package(mask_rcnn_ros QUIET)

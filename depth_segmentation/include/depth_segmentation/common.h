@@ -141,6 +141,12 @@ struct IsNotNan {
   }
 };
 
+struct MappingParams{
+  bool publish_while_moving = false;
+  float max_joint_difference = 0.005f;
+  float wait_time_stationary = 0.2f;
+};
+
 struct Params {
   bool dilate_depth_image = false;
   size_t dilation_size = 1u;
