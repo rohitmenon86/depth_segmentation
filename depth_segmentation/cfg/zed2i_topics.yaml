@@ -3,5 +3,6 @@ rgb_image_sub_topic: /zed2i/left/image_rect_color
 depth_camera_info_sub_topic: /zed2i/depth/camera_info #/camera/aligned_depth_to_color/camera_info
 rgb_camera_info_sub_topic: /zed2i/left/camera_info
 pointcloud_sub_topic: /zed2i/depths/points
+semantic_instance_segmentation_sub_topic: /yolo_segmentation_ros_node/result
 forward_labeled_segments_only: true
 use_overlap_bits_only: false                                                                                                                                                                                                                                             

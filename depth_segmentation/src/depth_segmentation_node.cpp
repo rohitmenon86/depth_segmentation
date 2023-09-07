@@ -81,6 +81,8 @@ class DepthSegmentationNode {
         "semantic_instance_segmentation_sub_topic",
         semantic_instance_segmentation_topic_,
         depth_segmentation::kSemanticInstanceSegmentationTopic);
+
+    ROS_INFO_STREAM("Semantic instance segmentation topic: "<<semantic_instance_segmentation_topic_);
     node_handle_.param<std::string>("world_frame", world_frame_,
                                     depth_segmentation::kTfWorldFrame);
     node_handle_.param<std::string>("camera_frame", camera_frame_,
@@ -157,7 +159,7 @@ class DepthSegmentationNode {
         boost::bind(&DepthSegmentationNode::cameraInfoCallback, this, _1, _2));
 
     point_cloud2_segment_pub_ =
-        node_handle_.advertise<sensor_msgs::PointCloud2>("object_segment",
+        node_handle_.advertise<sensor_msgs::PointCloud2>("/depth_segmentation_node/object_segment",
                                                          1000);
     point_cloud2_scene_pub_ =
         node_handle_.advertise<sensor_msgs::PointCloud2>("segmented_scene", 1);

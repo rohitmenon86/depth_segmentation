@@ -1,6 +1,7 @@
-depth_image_sub_topic: /camera/aligned_depth_to_color/image_raw  #/camera/depth/image_raw_noisy  #/camera/depth/image_raw
-rgb_image_sub_topic: /camera/color/image_raw
-depth_camera_info_sub_topic: /camera/aligned_depth_to_color/camera_info #/camera/aligned_depth_to_color/camera_info
-rgb_camera_info_sub_topic: /camera/color/camera_info
+depth_image_sub_topic: /head_camera_d405/depth/image_raw  #/camera/depth/image_raw_noisy  #/camera/depth/image_raw
+rgb_image_sub_topic: /head_camera_d405/color/image_raw
+depth_camera_info_sub_topic: /head_camera_d405/depth/camera_info #/camera/aligned_depth_to_color/camera_info
+rgb_camera_info_sub_topic: /head_camera_d405/color/camera_info
+semantic_instance_segmentation_sub_topic: /d405_yolo_segmentation_ros_node/result
 forward_labeled_segments_only: true
-use_overlap_bits_only: true                                                                                                                                                                                                                                             
+use_overlap_bits_only: false                                                                                                                                                                                                                                             

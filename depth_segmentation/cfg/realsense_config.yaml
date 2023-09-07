@@ -38,4 +38,7 @@ normals_display: false
 normals_distance_factor_threshold: 0.05
 normals_method: 3
 normals_window_size: 13
-visualize_segmented_scene: true
+visualize_segmented_scene: false
+publish_while_moving: false
+max_joint_difference: 0.000001
+wait_time_stationary: 0.2
