@@ -124,7 +124,7 @@ struct LabelMapParams {
 
 struct SemanticInstanceSegmentationParams {
   bool enable = true;
-  float overlap_threshold = 0.8f;
+  float overlap_threshold = 0.85f;
 };
 
 struct IsNan {

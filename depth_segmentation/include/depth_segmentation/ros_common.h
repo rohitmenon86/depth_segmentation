@@ -22,7 +22,7 @@ const static std::string kTfWorldFrame = "world";
 const static std::string kTfDepthCameraFrame = "camera_color_optical_frame";
 
 const bool kForwardLabeledSegmentsOnly = true; 
-const bool kUSeOverlapBitsOnly = true;
+const bool kUSeOverlapBitsOnly = false;
 const bool kPublishWhileMoving = false;
 const float kMaxJointDifference = 0.005f;
 const float kWaitTimeAfterStationary = 0.2f;
