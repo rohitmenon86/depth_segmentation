@@ -399,6 +399,11 @@ class DepthSegmentationNode {
       for (depth_segmentation::Segment segment : segments) {
         if(forward_labeled_segments_only_ && segment.is_pepper == false)
           continue;
+        if(segment.points.size() < 50)
+        {
+          ROS_INFO_STREAM("Segment has too few points. Hence not publishing");
+          continue;
+        }
         if(segment.is_pepper)
           ROS_INFO_STREAM("Publishing pepper depth segment "<<int32_t(*segment.instance_label.begin()));
         CHECK_GT(segment.points.size(), 0u);
