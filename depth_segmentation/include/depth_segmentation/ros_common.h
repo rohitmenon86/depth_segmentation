@@ -26,6 +26,9 @@ const bool kUSeOverlapBitsOnly = false;
 const bool kPublishWhileMoving = false;
 const float kMaxJointDifference = 0.005f;
 const float kWaitTimeAfterStationary = 0.2f;
+const int kMinSegmentSize = 50;
+const float kMinSegmentDepth = 0.07;
+const float kMaxSegmentDepth = 0.30;
 
 }  // namespace depth_segmentation
 

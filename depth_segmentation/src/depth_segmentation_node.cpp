@@ -104,6 +104,12 @@ class DepthSegmentationNode {
                                     depth_segmentation::kMaxJointDifference);
     node_handle_.param<float>("wait_time_stationary_", wait_time_stationary_,
                                     depth_segmentation::kWaitTimeAfterStationary);
+    node_handle_.param<int>("min_segment_size", min_segment_size_,
+                                    depth_segmentation::kMinSegmentSize);                                
+    node_handle_.param<float>("min_segment_depth", min_segment_depth_,
+                                    depth_segmentation::kMinSegmentDepth);                           
+    node_handle_.param<float>("max_segment_depth", max_segment_depth_,
+                                    depth_segmentation::kMaxSegmentDepth);
 
     depth_image_sub_ = new image_transport::SubscriberFilter(
         image_transport_, depth_image_topic_, 1);
@@ -238,6 +244,9 @@ class DepthSegmentationNode {
   bool publish_while_moving_;
   float max_joint_difference_;
   float wait_time_stationary_;
+  int min_segment_size_;
+  float min_segment_depth_;
+  float max_segment_depth_;
 
 #ifdef MASKRCNNROS_AVAILABLE
   message_filters::Subscriber<mask_rcnn_ros::Result>*
@@ -280,9 +289,18 @@ class DepthSegmentationNode {
     point_pcl->normal_x = normals[0];
     point_pcl->normal_y = normals[1];
     point_pcl->normal_z = normals[2];
-    point_pcl->r = 255; //colors[0];
-    point_pcl->g = 0; //colors[1]; //0.0; //colors[1];
-    point_pcl->b = 0; //colors[2]; //0.0; //colors[2];
+    if(colors[0] > 0 && colors[0] < 256 && colors[1] > 0 && colors[1] < 256 && colors[2] > 0 && colors[2] < 256)
+    {
+      point_pcl->r = colors[0];
+      point_pcl->g = colors[1];
+      point_pcl->b = colors[2];
+    }
+    else
+    {
+      point_pcl->r = 255; //colors[0];
+      point_pcl->g = 0; //colors[1];
+      point_pcl->b = 0; //colors[2];
+    }
   }
 
   void fillPoint(const cv::Vec3f& point, const cv::Vec3f& normals,
@@ -294,9 +312,18 @@ class DepthSegmentationNode {
     point_pcl->normal_x = normals[0];
     point_pcl->normal_y = normals[1];
     point_pcl->normal_z = normals[2];
-    point_pcl->r = 255; //colors[0];
-    point_pcl->g = 0; //colors[1];
-    point_pcl->b = 0; //colors[2];
+    if(colors[0] > 0 && colors[0] < 256 && colors[1] > 0 && colors[1] < 256 && colors[2] > 0 && colors[2] < 256)
+    {
+      point_pcl->r = colors[0];
+      point_pcl->g = colors[1];
+      point_pcl->b = colors[2];
+    }
+    else
+    {
+      point_pcl->r = 255; //colors[0];
+      point_pcl->g = 0; //colors[1];
+      point_pcl->b = 0; //colors[2];
+    }
 
     point_pcl->semantic_label = semantic_label;
     point_pcl->instance_label = instance_label;
@@ -384,6 +411,41 @@ class DepthSegmentationNode {
     joint_state_ = head_state;
   }
 
+  bool is_segment_depth_valid(const depth_segmentation::Segment& segment)
+  {
+    int segment_size = segment.points.size();
+    if(segment.points.size() < min_segment_size_)
+    {
+      ROS_INFO_STREAM("Segment has too few points. Hence not publishing");
+      return false;
+    }
+    float avg_depth =     0.0f;
+    int points_greater_depth = 0;
+    int points_lesser_depth = 0;
+    for(const auto& point: segment.points)
+    {
+      if(point[2] < min_segment_depth_)
+        points_lesser_depth++;
+
+      if(point[2] > max_segment_depth_)
+        points_greater_depth++;
+
+      avg_depth = avg_depth + point[2];
+    }
+    avg_depth = avg_depth/segment_size;
+    float frac_greater_depth = points_greater_depth/segment_size;
+    float frac_lesser_depth = points_lesser_depth/segment_size;
+    if(frac_greater_depth > 0.3 || frac_lesser_depth > 0.3 || avg_depth < min_segment_depth_ || avg_depth > max_segment_depth_)
+    {
+      ROS_INFO_STREAM("Segment depth outside valid range. frac_greater_depth: "<<frac_greater_depth<<"\t frac_lesser_depth: "<<frac_lesser_depth<<"\t avg_depth: "<<avg_depth); 
+      return false;
+    }
+    else
+    {
+      return true;
+    }
+  }
+
   void publish_segments(
       const std::vector<depth_segmentation::Segment>& segments,
       const std_msgs::Header& header) {
@@ -399,13 +461,12 @@ class DepthSegmentationNode {
       for (depth_segmentation::Segment segment : segments) {
         if(forward_labeled_segments_only_ && segment.is_pepper == false)
           continue;
-        if(segment.points.size() < 50)
+        if(is_segment_depth_valid(segment) == false)
         {
-          ROS_INFO_STREAM("Segment has too few points. Hence not publishing");
           continue;
         }
         if(segment.is_pepper)
-          ROS_INFO_STREAM("Publishing pepper depth segment "<<int32_t(*segment.instance_label.begin()));
+          ROS_INFO_STREAM("Publishing pepper segment "<<int32_t(*segment.instance_label.begin()));
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
@@ -424,6 +485,7 @@ class DepthSegmentationNode {
           segment_pcl->push_back(point_pcl);
           scene_pcl->push_back(point_pcl);
         }
+
         sensor_msgs::PointCloud2 pcl2_msg;
         pcl::toROSMsg(*segment_pcl, pcl2_msg);
         pcl2_msg.header.stamp = header.stamp;
