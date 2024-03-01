@@ -2,7 +2,8 @@
 #define DEPTH_SEGMENTATION_DEPTH_SEGMENTATION_H_
 
 #include <glog/logging.h>
-#include <opencv2/imgproc.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core.hpp>
 #include <opencv2/rgbd.hpp>
 
 #include "depth_segmentation/DepthSegmenterConfig.h"

@@ -18,7 +18,7 @@ const static std::string kSemanticInstanceSegmentationTopic =
 const static std::string kPointCloud2Topic = "/camera/aligned_depth_to_color/points";  
 const static std::string kJointStatesTopic = "/joint_states";
 
-const static std::string kTfWorldFrame = "world";
+const static std::string kTfWorldFrame = "trolley_local_link";
 const static std::string kTfDepthCameraFrame = "camera_color_optical_frame";
 
 const bool kForwardLabeledSegmentsOnly = true; 

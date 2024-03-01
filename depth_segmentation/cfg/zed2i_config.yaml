@@ -38,10 +38,10 @@ normals_display: false
 normals_distance_factor_threshold: 0.05
 normals_method: 3
 normals_window_size: 13
-visualize_segmented_scene: true
+visualize_segmented_scene: false
 publish_while_moving: false
-max_joint_difference: 0.00001
-wait_time_stationary: 0.2
-min_segment_size: 50
-min_segment_depth: 0.30
-max_segment_depth: 0.90
+max_joint_difference: 0.000005
+wait_time_stationary: 0.5
+min_segment_size: 100
+min_segment_depth: 0.25
+max_segment_depth: 1.0

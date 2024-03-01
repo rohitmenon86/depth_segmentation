@@ -305,7 +305,7 @@ class DepthSegmentationNode {
 
   void fillPoint(const cv::Vec3f& point, const cv::Vec3f& normals,
                  const cv::Vec3f& colors, const size_t& semantic_label,
-                 const size_t& instance_label, PointSurfelLabel* point_pcl) {
+                 const uint32_t& instance_label, PointSurfelLabel* point_pcl) {
     point_pcl->x = point[0];
     point_pcl->y = point[1];
     point_pcl->z = point[2];
@@ -328,7 +328,7 @@ class DepthSegmentationNode {
     point_pcl->semantic_label = semantic_label;
     point_pcl->instance_label = instance_label;
 
-    ROS_WARN_STREAM_THROTTLE(1, "New labeled point with semantic label:  "<<point_pcl->semantic_label<<"& instance label: "<<point_pcl->instance_label);
+    //ROS_WARN_STREAM_THROTTLE(1, "New labeled point with semantic label:  "<<int16_t(point_pcl->semantic_label)<<"& instance label: "<<int16_t(point_pcl->instance_label));
   }
 
   /*void convertDepthSegement2InstancePclSegment(const depth_segmentation::OverlapSegment& overlap_segment, const std_msgs::Header& header, pcl::PointCloud<PointSurfelLabel>::Ptr scene_pcl, bool use_overlap_mask)
@@ -466,14 +466,14 @@ class DepthSegmentationNode {
           continue;
         }
         if(segment.is_pepper)
-          ROS_INFO_STREAM("Publishing pepper segment "<<int32_t(*segment.instance_label.begin()));
+          ROS_INFO_STREAM("Publishing instance segment: "<<int32_t(*segment.instance_label.begin())<<" with semantic label: "<<int16_t(*segment.semantic_label.begin()));
         CHECK_GT(segment.points.size(), 0u);
         pcl::PointCloud<PointSurfelLabel>::Ptr segment_pcl(
             new pcl::PointCloud<PointSurfelLabel>);
         for (std::size_t i = 0u; i < segment.points.size(); ++i) {
           PointSurfelLabel point_pcl;
           uint8_t semantic_label = 0u;
-          uint8_t instance_label = 0u;
+          uint32_t instance_label = 0u;
           if (segment.instance_label.size() > 0u) {
             instance_label = *(segment.instance_label.begin());
             semantic_label = *(segment.semantic_label.begin());
@@ -534,12 +534,20 @@ class DepthSegmentationNode {
   void semanticInstanceSegmentationFromRosMsg(
       const mask_rcnn_ros::Result::ConstPtr& segmentation_msg,
       depth_segmentation::SemanticInstanceSegmentation*
-          semantic_instance_segmentation) {
+          semantic_instance_segmentation) 
+  {
+    ROS_WARN_STREAM("No of masks: "<<segmentation_msg->masks.size());
     semantic_instance_segmentation->masks.reserve(
         segmentation_msg->masks.size());
     semantic_instance_segmentation->labels.reserve(
         segmentation_msg->masks.size());
     for (size_t i = 0u; i < segmentation_msg->masks.size(); ++i) {
+      ROS_INFO_STREAM("\t Mask class name: "<<segmentation_msg->class_names[i]<<"\t instance id: "<<segmentation_msg->instance_ids[i]);
+      if(segmentation_msg->class_names[i] == "peduncle" || segmentation_msg->class_names[i] == "stem")
+      {
+        ROS_WARN_STREAM("Peduncle mask Discarding: "<<segmentation_msg->class_names[i]<<" class_id: "<<segmentation_msg->class_ids[i]);
+        continue;
+      }
       cv_bridge::CvImagePtr cv_mask_image;
       cv_mask_image = cv_bridge::toCvCopy(segmentation_msg->masks[i],
                                           sensor_msgs::image_encodings::MONO8);
@@ -818,7 +826,7 @@ class DepthSegmentationNode {
                                 normal_map, &label_map, &segment_masks,
                                 &segments, overlap_segments, pcl_cloud);
           if (overlap_segments.size() > 0u) {
-              ROS_INFO_STREAM_THROTTLE(1.0, "Before publishing segments"); 
+              ROS_INFO_STREAM_THROTTLE(10.0, "Before publishing segments"); 
               publish_segments(overlap_segments, depth_msg->header);
           }
         }
@@ -829,7 +837,7 @@ class DepthSegmentationNode {
                                   normal_map, &label_map, &segment_masks,
                                   &segments, pcl_cloud);
           if (segments.size() > 0u) {
-            ROS_INFO_STREAM_THROTTLE(1.0, "Before publishing segments"); 
+            ROS_INFO_STREAM_THROTTLE(10.0, "Before publishing segments"); 
             publish_segments(segments, depth_msg->header);
           }
         }
