@@ -5,6 +5,8 @@
 #include <image_transport/subscriber_filter.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/sync_policies/exact_time.h>
+
 #include <message_filters/synchronizer.h>
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/point_types.h>
@@ -188,7 +190,7 @@ class DepthSegmentationNode {
       ImageSyncPolicy;
 
 #ifdef MASKRCNNROS_AVAILABLE
-  typedef message_filters::sync_policies::ApproximateTime<
+  typedef message_filters::sync_policies::ExactTime<
       sensor_msgs::Image, sensor_msgs::Image, mask_rcnn_ros::Result> //, sensor_msgs::PointCloud2>
       ImageSegmentationSyncPolicy;
 #endif
