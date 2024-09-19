@@ -42,6 +42,6 @@ visualize_segmented_scene: false
 publish_while_moving: false
 max_joint_difference: 0.000005
 wait_time_stationary: 0.5
-min_segment_size: 100
-min_segment_depth: 0.25
+min_segment_size: 200
+min_segment_depth: 0.2
 max_segment_depth: 1.0

@@ -11,6 +11,7 @@
 
 #include <pcl/pcl_base.h>
 #include <pcl/point_types.h>
+#include <cv_bridge/cv_bridge.h>
 
 namespace depth_segmentation {
 
@@ -194,6 +195,66 @@ class DepthSegmenter {
                  std::vector<std::vector<cv::Point2i>>* labels);
   inline DepthCamera getDepthCamera() const { return depth_camera_; }
 
+  inline void addToVectors(cv::Mat* rescaled_depth, cv::Mat* dilated_rescaled_depth,
+                  cv_bridge::CvImagePtr cv_rgb_image, cv_bridge::CvImagePtr cv_depth_image,
+                  cv::Mat* bw_image, cv::Mat* mask) {
+    // Add each element to its corresponding vector
+    if (rescaled_depth)
+      rescaled_depth_vec_.push_back((*rescaled_depth).clone());
+    
+    if (dilated_rescaled_depth)
+      dilated_rescaled_depth_vec_.push_back((*dilated_rescaled_depth).clone());
+    
+    rgb_image_vec_.push_back(cv_rgb_image);
+    depth_image_vec_.push_back(cv_depth_image);
+    
+    if (bw_image)
+      bw_image_vec_.push_back((*bw_image).clone());
+    
+    if (mask)
+      mask_vec_.push_back((*mask).clone());
+  }
+
+  inline bool retrieveFromVectors(int index, cv::Mat* rescaled_depth, cv::Mat* dilated_rescaled_depth,
+                         cv_bridge::CvImagePtr& cv_rgb_image, cv_bridge::CvImagePtr& cv_depth_image,
+                         cv::Mat* bw_image, cv::Mat* mask) {
+    // Check if index is out of bounds
+    if (index < 0 || index >= rescaled_depth_vec_.size()) {
+        return false;  // Failed retrieval
+    }
+
+    // Assign the pointers directly from the vectors
+    if (rescaled_depth) {
+        *rescaled_depth = rescaled_depth_vec_[index];
+    }
+    if (dilated_rescaled_depth) {
+        *dilated_rescaled_depth = dilated_rescaled_depth_vec_[index];
+    }
+    cv_rgb_image = rgb_image_vec_[index];
+    cv_depth_image = depth_image_vec_[index];
+    if (bw_image) {
+        *bw_image = bw_image_vec_[index];
+    }
+    if (mask) {
+        *mask = mask_vec_[index];
+    }
+
+    // Clear vectors after retrieval
+    rescaled_depth_vec_.clear();
+    dilated_rescaled_depth_vec_.clear();
+    rgb_image_vec_.clear();
+    depth_image_vec_.clear();
+    bw_image_vec_.clear();
+    mask_vec_.clear();
+
+    return true;  // Successful retrieval
+  }
+  inline int getVectorSize()
+  {
+    return rescaled_depth_vec_.size();
+  }
+  int selectBestDepthImage();
+
  private:
   void generateRandomColorsAndLabels(size_t contours_size,
                                      std::vector<cv::Scalar>* colors,
@@ -205,6 +266,13 @@ class DepthSegmenter {
   std::vector<cv::Scalar> colors_;
   std::vector<int> labels_;
   size_t running_index_; 
+
+  std::vector<cv::Mat> rescaled_depth_vec_;
+  std::vector<cv::Mat> dilated_rescaled_depth_vec_;
+  std::vector<cv_bridge::CvImagePtr> rgb_image_vec_;
+  std::vector<cv_bridge::CvImagePtr> depth_image_vec_;
+  std::vector<cv::Mat> bw_image_vec_;
+  std::vector<cv::Mat> mask_vec_;
 };
 
 // TODO(ntonci): Make a unit test.
