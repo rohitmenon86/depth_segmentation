@@ -118,7 +118,7 @@ class DepthSegmentationNode {
     node_handle_.param<float>("wait_time_stationary_", wait_time_stationary_,
                                     depth_segmentation::kWaitTimeAfterStationary);
     node_handle_.param<bool>("use_stability_score", use_stability_score_,
-                                    depth_segmentation::kPublishWhileMoving);
+                                    depth_segmentation::kUSeStabilityScores);
 
     node_handle_.param<int>("min_segment_size", min_segment_size_,
                                     depth_segmentation::kMinSegmentSize);                                
@@ -190,8 +190,8 @@ class DepthSegmentationNode {
                              params_.visualize_segmented_scene,
                              params_.visualize_segmented_scene);
 
-    tf_buffer.reset(new tf2_ros::Buffer(ros::Duration(tf2::BufferCore::DEFAULT_CACHE_TIME)));
-    tf_listener.reset(new tf2_ros::TransformListener(*tf_buffer, node_handle_));
+    tf_buffer_.reset(new tf2_ros::Buffer(ros::Duration(tf2::BufferCore::DEFAULT_CACHE_TIME)));
+    tf_listener_.reset(new tf2_ros::TransformListener(*tf_buffer_, node_handle_));
     last_robot_moved_time_ = ros::Time::now();
     ROS_INFO("Constructor");
   }
@@ -201,8 +201,8 @@ class DepthSegmentationNode {
   image_transport::ImageTransport image_transport_;
   tf::TransformBroadcaster transform_broadcaster_;
 
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer;
-  std::unique_ptr<tf2_ros::TransformListener> tf_listener;
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
 
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                           sensor_msgs::Image>
@@ -808,7 +808,7 @@ class DepthSegmentationNode {
       const sensor_msgs::Image::ConstPtr& rgb_msg,
       const mask_rcnn_ros::Result::ConstPtr& segmentation_msg) //,
       //const sensor_msgs::PointCloud2::ConstPtr& pc2_msg) 
-    {
+  {
     depth_segmentation::SemanticInstanceSegmentation instance_segmentation;
     ROS_WARN_STREAM_THROTTLE(20, "imageSegmentationCallback");
     semanticInstanceSegmentationFromRosMsg(segmentation_msg,
@@ -821,160 +821,28 @@ class DepthSegmentationNode {
     //   ROS_WARN_STREAM_THROTTLE(10, "point cloud frame id: "<<pc2_msg->header.frame_id);
     int best_depth_img_idx = -1;
     stable_depth_image_available_ = false;
+    robot_moving_ = true;
+    robot_steady_ = false;
     if(publish_while_moving_ == false)
     {
-      robot_steady_ = false;
-      geometry_msgs::TransformStamped pcFrameTf;
-      try
-      {
-        pcFrameTf = tf_buffer->lookupTransform(world_frame_, depth_msg->header.frame_id, depth_msg->header.stamp);
-        ROS_INFO_STREAM_THROTTLE(20, "Transform from "<<depth_msg->header.frame_id<<" to "<<world_frame_<<" for time "<<depth_msg->header.stamp<<" found");
-      }
-      catch (const tf2::TransformException &e)
-      {
-        ROS_ERROR_STREAM("Couldn't find transform to map frame: " << e.what());
-        return;
-      }
-      static Eigen::Isometry3d lastTfEigen;
-      Eigen::Isometry3d tfEigen = tf2::transformToEigen(pcFrameTf);
-      bool tf_moved = false;
-      ros::Time tf_moved_time; 
-      if(tfEigen.isApprox(lastTfEigen, 1e-2) == false)
-      {
-        tf_moved_time = ros::Time::now();
-        ROS_WARN_THROTTLE(1, "tfEigen and lastTfEigen are not approx equal");
-        tf_moved = true;
-      }
-      lastTfEigen = tfEigen;
-      if(use_joint_velocities_)
-      {
-        ros::Time last_vel_exceeded_time; 
-        bool vel_exceeded = false;
-        for(size_t i = 0; i < joint_state_.velocity.size(); ++i)
-        {
-          // Check if selective joints should be used
-          if(use_selective_joints_)
-          {
-            // Find if the current joint name is in the selective_joint_names_ list
-            if(std::find(selective_joint_names_.begin(), selective_joint_names_.end(), joint_state_.name[i]) == selective_joint_names_.end())
-            {
-              continue; // Skip this joint if it's not in the selective joints list
-            }
-          }
-
-          // Perform the velocity check
-          if(joint_state_.velocity[i] > max_joint_velocity_)
-          {
-            ROS_WARN_STREAM_THROTTLE(1, "Joint velocity of at least one joint is greater than threshold: " 
-              << joint_state_.velocity[i] << "\t max allowed: " << max_joint_velocity_);
-            last_vel_exceeded_time = joint_state_.header.stamp;
-            vel_exceeded = true;
-          }
-        }
-        if(tf_moved && vel_exceeded)
-        {
-          if(last_vel_exceeded_time > tf_moved_time)
-          {
-            last_robot_moved_time_ = last_vel_exceeded_time;
-          }
-          else
-          {
-            last_robot_moved_time_ = tf_moved_time;
-          }
-          robot_moving_ = true;
-        }
-        else if(tf_moved)
-        {
-          last_robot_moved_time_ = tf_moved_time;
-          robot_moving_ = true;
-        }
-        else if(vel_exceeded)
-        {
-          last_robot_moved_time_ = last_vel_exceeded_time;
-          robot_moving_ = true;
-        }
-        else
-        {
-          robot_moving_ = false;
-          ROS_WARN_STREAM_THROTTLE(1.0, "Robot stationary");
-        }
-        
-        if(robot_moving_ == false && fabs((depth_msg->header.stamp - last_robot_moved_time_).toSec()) < wait_time_stationary_)
-        {
-          ROS_WARN_STREAM_THROTTLE(1.0, "Robot still not steady hence not processing");
-          robot_steady_ = false;
-        }
-        else
-        {
-          ROS_WARN_STREAM_THROTTLE(1.0, "Robot steady");
-          last_robot_steady_time_ = ros::Time::now();
-          robot_steady_ = true;
-        }
-      }
-      else
-      {
-        double sq_sum = 0; 
-        for(size_t i = 0; i < joint_state_.position.size(); ++i)
-        {
-            sq_sum += (joint_state_.position[i] - prev_joint_state_.position[i] )*(joint_state_.position[i] - prev_joint_state_.position[i]);
-        }
-        double dist_norm = sqrt(sq_sum);
-
-        if(dist_norm > max_joint_difference_)
-        {
-          last_robot_moved_time_ = joint_state_.header.stamp;
-          ROS_WARN_STREAM_THROTTLE(1, "joint distance norm is greater than threshold: "<<dist_norm); //<<"js: "<<joint_state_<<"prev: "<<prev_joint_state_);
-          robot_moving_ = true;
-        }
-        ROS_WARN_STREAM_THROTTLE(20, "joint distance norm : "<<dist_norm);
-        if(fabs((depth_msg->header.stamp- last_robot_moved_time_).toSec()) < wait_time_stationary_)
-        {
-          ROS_WARN_STREAM_THROTTLE(1.0, "Robot still moving hence not processing");
-        }
-        else
-        {
-          robot_steady_ = true;
-          last_robot_steady_time_ = ros::Time::now();
-        }
-      }
-
-      if(use_stability_score_ && depth_segmenter_.getVectorSize() > 1  && depth_segmenter_.getVectorSize() < 5)
-      {
-        ROS_WARN_STREAM_THROTTLE(1.0, "Loop entered");
-        {
-          ROS_WARN_STREAM_THROTTLE(0.5, "Selecting best depth image");
-          best_depth_img_idx = depth_segmenter_.selectBestDepthImage();
-          ROS_WARN_STREAM_THROTTLE(0.5, "Returned from select best depth image");
-          if(best_depth_img_idx < 0)
-          {
-            ROS_ERROR_STREAM_THROTTLE(1.0, "No stable image");
-            stable_depth_image_available_ = false;
-            return;
-          }
-          ROS_WARN_STREAM_THROTTLE(0.5, "Selected best depth image"<<best_depth_img_idx);
-          stable_depth_image_available_ = depth_segmenter_.retrieveFromVectors(best_depth_img_idx, &rescaled_depth, &dilated_rescaled_depth, cv_rgb_image, cv_depth_image, &bw_image, &mask)
-        }
-      }
+      ROS_WARN_STREAM_THROTTLE(10.0, "Publish while steady");
+      robot_moving_ = isRobotMoving(joint_state_, prev_joint_state_, depth_msg, use_joint_velocities_, use_selective_joints_, selective_joint_names_, max_joint_velocity_, max_joint_difference_, world_frame_, use_transform_, last_robot_moved_time_);
+      robot_steady_ = isRobotSteady(robot_moving_, last_robot_moved_time_, wait_time_stationary_, last_robot_steady_time_);
     }
     else
     {
-      ROS_WARN_STREAM_THROTTLE(5.0, "Publish while moving");
+      ROS_WARN_STREAM_THROTTLE(10.0, "Publish while moving");
     }
-    
-    //ROS_INFO_STREAM_THROTTLE(5.0, "imageSegmentationCallback"); 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_cloud((new pcl::PointCloud<pcl::PointXYZRGB>));
     pcl_cloud = NULL;
     cv_bridge::CvImagePtr cv_rgb_image(new cv_bridge::CvImage);
     cv_bridge::CvImagePtr cv_depth_image(new cv_bridge::CvImage);
     cv::Mat rescaled_depth, dilated_rescaled_depth, bw_image, mask, depth_map, normal_map, edge_map;
-    if((robot_steady_ == true && publish_while_moving_ == false) || publish_while_moving_ == true)
+
+    if (robot_steady_ || publish_while_moving_) 
     {
-      if(pc2_msg != NULL)
-        pcl::fromROSMsg(*pc2_msg, *pcl_cloud);
-      else
-        pcl_cloud = NULL;
       if (camera_info_ready_) {
-        ROS_WARN_STREAM_THROTTLE(5.0, "preprocess");
+        ROS_WARN_STREAM_THROTTLE(0.1, "preprocess: "<<robot_steady_<<" last_robot_moved_time: "<<last_robot_moved_time_);
         //cv_bridge::CvImagePtr cv_rgb_image(new cv_bridge::CvImage);
         cv_rgb_image = cv_bridge::toCvCopy(rgb_msg, rgb_msg->encoding);
         if (rgb_msg->encoding == sensor_msgs::image_encodings::BGR8) {
@@ -982,31 +850,45 @@ class DepthSegmentationNode {
         }
         preprocess(depth_msg, rgb_msg, &rescaled_depth, &dilated_rescaled_depth,
                   cv_rgb_image, cv_depth_image, &bw_image, &mask);
-
-        if(publish_while_moving_ == false && use_stability_score_)
-          depth_segmenter_.addToVectors( &rescaled_depth, &dilated_rescaled_depth,
+        
+        if(publish_while_moving_ == false)
+        {
+          if(use_stability_score_ && robot_steady_ && depth_segmenter_.getVectorSize() < 5)
+          {
+            ROS_WARN_STREAM_THROTTLE(0.2, "Adding to vectors");
+            depth_segmenter_.addToVectors( &rescaled_depth, &dilated_rescaled_depth,
                   cv_rgb_image, cv_depth_image, &bw_image, &mask);
+            stable_depth_image_available_ = false;
+          }
+          else
+          {
+            ROS_WARN_STREAM_THROTTLE(0.2, "image acquired");
+            stable_depth_image_available_ = robot_steady_;
+          }
+        }
       }
     }
-    // else if(publish_while_moving_ == true)
-    // {
-    //   if (camera_info_ready_) {
-    //   cv_bridge::CvImagePtr cv_rgb_image(new cv_bridge::CvImage);
-    //   cv_rgb_image = cv_bridge::toCvCopy(rgb_msg, rgb_msg->encoding);
-    //   if (rgb_msg->encoding == sensor_msgs::image_encodings::BGR8) {
-    //     cv::cvtColor(cv_rgb_image->image, cv_rgb_image->image, CV_BGR2RGB);
-    //   }
-
-    //   cv_bridge::CvImagePtr cv_depth_image(new cv_bridge::CvImage);
-    //   cv::Mat rescaled_depth, dilated_rescaled_depth, bw_image, mask, 
-    //       depth_map, normal_map, edge_map;
-    //   preprocess(depth_msg, rgb_msg, &rescaled_depth, &dilated_rescaled_depth,
-    //             cv_rgb_image, cv_depth_image, &bw_image, &mask);
-    //   }
-    // }
+    if(use_stability_score_ && ((depth_segmenter_.getVectorSize() > 1 && robot_moving_) || (depth_segmenter_.getVectorSize() > 4)))
+    {
+      ROS_WARN_STREAM_THROTTLE(1.0, "Loop entered");
+      {
+        ROS_WARN_STREAM_THROTTLE(0.5, "Selecting best depth image");
+        best_depth_img_idx = depth_segmenter_.selectBestDepthImage();
+        ROS_WARN_STREAM_THROTTLE(0.5, "Returned from select best depth image");
+        if(best_depth_img_idx < 0)
+        {
+          ROS_ERROR_STREAM_THROTTLE(1.0, "No stable image");
+          stable_depth_image_available_ = false;
+          return;
+        }
+        ROS_WARN_STREAM_THROTTLE(0.5, "Selected best depth image"<<best_depth_img_idx);
+        stable_depth_image_available_ = depth_segmenter_.retrieveFromVectors(best_depth_img_idx, &rescaled_depth, &dilated_rescaled_depth, cv_rgb_image, cv_depth_image, &bw_image, &mask);
+      }
+    }
+  
     if (camera_info_ready_ && ((publish_while_moving_ == false && (stable_depth_image_available_ == true ) ) || (publish_while_moving_ == true)))
     {
-      ROS_WARN_THROTTLE(1.0, "Retrieved image further processing");
+      ROS_WARN_THROTTLE(1.0, "Retrieved image for further processing");
       if (!camera_tracker_.getRgbImage().empty() &&
             !camera_tracker_.getDepthImage().empty() ||
         !depth_segmentation::kUseTracker) {
@@ -1053,18 +935,6 @@ class DepthSegmentationNode {
       }
     }
     return;
-    // if(stable_depth_image_available_ == true)
-    // {
-    //   ROS_WARN_STREAM_THROTTLE(0.5, "stable_depth_image_available_ retrieving "<<best_depth_img_idx);
-    //   cv_bridge::CvImagePtr cv_rgb_image(new cv_bridge::CvImage);
-    //   cv_bridge::CvImagePtr cv_depth_image(new cv_bridge::CvImage);
-    //   cv::Mat rescaled_depth, dilated_rescaled_depth, bw_image, mask, depth_map,
-    //         normal_map, edge_map;
-    //   ROS_WARN_STREAM_THROTTLE(1.0, "Retrieving from vectors");
-    //   if(depth_segmenter_.retrieveFromVectors(best_depth_img_idx, &rescaled_depth, &dilated_rescaled_depth, cv_rgb_image, cv_depth_image, &bw_image, &mask) == false)
-    //     return;
-    // }
-
     // Update the member images to the new images.
     // TODO(ff): Consider only doing this, when we are far enough away
     // from a frame. (Which basically means we would set a keyframe.)
@@ -1115,188 +985,147 @@ class DepthSegmentationNode {
     camera_info_ready_ = true;
   }
 
-  bool checkTfMoved(const sensor_msgs::ImageConstPtr& depth_msg,
-                  tf2_ros::Buffer* tf_buffer,
-                  const std::string& world_frame,
-                  bool use_transform,
-                  Eigen::Isometry3d& last_tf_eigen,
-                  ros::Time& tf_moved_time) 
-{
-  if (!use_transform) {
-    return false;
-  }
-
-  geometry_msgs::TransformStamped pc_frame_tf;
-  try
+  bool checkTfMoved(const sensor_msgs::ImageConstPtr& depth_msg, const std::string& world_frame, bool use_transform, ros::Time& tf_moved_time) 
   {
-    pc_frame_tf = tf_buffer->lookupTransform(world_frame, depth_msg->header.frame_id, depth_msg->header.stamp);
-    ROS_INFO_STREAM_THROTTLE(20, "Transform from " << depth_msg->header.frame_id << " to " << world_frame << " for time " << depth_msg->header.stamp << " found");
-  }
-  catch (const tf2::TransformException& e)
-  {
-    ROS_ERROR_STREAM("Couldn't find transform to map frame: " << e.what());
-    return false;
-  }
-
-  Eigen::Isometry3d tf_eigen = tf2::transformToEigen(pc_frame_tf);
-  if (!tf_eigen.isApprox(last_tf_eigen, 1e-2))
-  {
-    tf_moved_time = ros::Time::now();
-    ROS_WARN_THROTTLE(1, "tf_eigen and last_tf_eigen are not approx equal");
-    last_tf_eigen = tf_eigen;
-    return true;
-  }
-
-  last_tf_eigen = tf_eigen;
-  return false;
-}
-
-bool checkJointVelocities(const sensor_msgs::JointState& joint_state,
-                          const std::vector<std::string>& selective_joint_names,
-                          bool use_selective_joints,
-                          double max_joint_velocity,
-                          ros::Time& last_vel_exceeded_time) 
-{
-  bool vel_exceeded = false;
-
-  for (size_t i = 0; i < joint_state.velocity.size(); ++i)
-  {
-    // Selective joint check
-    if (use_selective_joints)
-    {
-      if (std::find(selective_joint_names.begin(), selective_joint_names.end(), joint_state.name[i]) == selective_joint_names.end())
-      {
-        continue; // Skip this joint if it's not in the selective joints list
-      }
+    if (!use_transform) {
+      return false;
     }
+    
+    static Eigen::Isometry3d last_tf_eigen_;
 
-    // Check if velocity exceeds the threshold
-    if (joint_state.velocity[i] > max_joint_velocity)
+    geometry_msgs::TransformStamped pc_frame_tf;
+    try
     {
-      ROS_WARN_STREAM_THROTTLE(1, "Joint velocity of at least one joint is greater than threshold: " 
-        << joint_state.velocity[i] << "\t max allowed: " << max_joint_velocity);
-      last_vel_exceeded_time = joint_state.header.stamp;
-      vel_exceeded = true;
-    }
-  }
-
-  return vel_exceeded;
-}
-
-bool checkJointPositionDifference(const sensor_msgs::JointState& joint_state,
-                                  const sensor_msgs::JointState& prev_joint_state,
-                                  double max_joint_difference,
-                                  ros::Time& last_robot_moved_time) 
-{
-  double sq_sum = 0;
-  for (size_t i = 0; i < joint_state.position.size(); ++i)
-  {
-    sq_sum += std::pow(joint_state.position[i] - prev_joint_state.position[i], 2);
-  }
-  double dist_norm = std::sqrt(sq_sum);
-
-  if (dist_norm > max_joint_difference)
-  {
-    last_robot_moved_time = joint_state.header.stamp;
-    ROS_WARN_STREAM_THROTTLE(1, "Joint distance norm is greater than threshold: " << dist_norm);
-    return true;
-  }
-
-  ROS_WARN_STREAM_THROTTLE(20, "Joint distance norm: " << dist_norm);
-  return false;
-}
-
-bool isRobotMoving(
-  const sensor_msgs::JointState& joint_state,
-  const sensor_msgs::JointState& prev_joint_state,
-  const sensor_msgs::ImageConstPtr& depth_msg,
-  const std::string& world_frame,
-  double max_joint_velocity,
-  double max_joint_difference,
-  bool use_joint_velocities,
-  bool use_selective_joints,
-  const std::vector<std::string>& selective_joint_names,
-  bool use_transform,
-  Eigen::Isometry3d& last_tf_eigen,
-  ros::Time& last_robot_moved_time,
-  ros::Time& current_time
-) {
-  bool robot_moving = false;
-
-  // Transform check if enabled
-  if (use_transform) {
-    geometry_msgs::TransformStamped pcFrameTf;
-    try {
-      pcFrameTf = tf_buffer_->lookupTransform(world_frame, depth_msg->header.frame_id, depth_msg->header.stamp);
+      pc_frame_tf = tf_buffer_->lookupTransform(world_frame, depth_msg->header.frame_id, depth_msg->header.stamp);
       ROS_INFO_STREAM_THROTTLE(20, "Transform from " << depth_msg->header.frame_id << " to " << world_frame << " for time " << depth_msg->header.stamp << " found");
-    } catch (const tf2::TransformException& e) {
+    }
+    catch (const tf2::TransformException& e)
+    {
       ROS_ERROR_STREAM("Couldn't find transform to map frame: " << e.what());
       return false;
     }
 
-    Eigen::Isometry3d tf_eigen = tf2::transformToEigen(pcFrameTf);
-    if (!tf_eigen.isApprox(last_tf_eigen, 1e-2)) {
-      ROS_WARN_THROTTLE(1, "Transform has moved");
-      last_tf_eigen = tf_eigen;
-      robot_moving = true;
+    Eigen::Isometry3d tf_eigen = tf2::transformToEigen(pc_frame_tf);
+    if (!tf_eigen.isApprox(last_tf_eigen_, 1e-2))
+    {
+      tf_moved_time = ros::Time::now();
+      ROS_WARN_THROTTLE(1, "tf_eigen and last_tf_eigen are not approx equal");
+      last_tf_eigen_ = tf_eigen;
+      return true;
     }
+
+    last_tf_eigen_ = tf_eigen;
+    return false;
   }
 
-  // Joint velocity and position difference checks
-  if (use_joint_velocities) {
+  bool checkJointVelocities(const sensor_msgs::JointState& joint_state, double max_joint_velocity, 
+                            bool use_selective_joints, const std::vector<std::string>& selective_joint_names,                          
+                            ros::Time& last_vel_exceeded_time) 
+  {
     bool vel_exceeded = false;
-    ros::Time last_vel_exceeded_time;
-
-    for (size_t i = 0; i < joint_state.velocity.size(); ++i) {
-      if (use_selective_joints) {
-        if (std::find(selective_joint_names.begin(), selective_joint_names.end(), joint_state.name[i]) == selective_joint_names.end()) {
+    for (size_t i = 0; i < joint_state.velocity.size(); ++i)
+    {
+      // Selective joint check
+      if (use_selective_joints)
+      {
+        if (std::find(selective_joint_names.begin(), selective_joint_names.end(), joint_state.name[i]) == selective_joint_names.end())
+        {
           continue; // Skip this joint if it's not in the selective joints list
         }
       }
 
-      if (joint_state.velocity[i] > max_joint_velocity) {
+      // Check if velocity exceeds the threshold
+      if (joint_state.velocity[i] > max_joint_velocity)
+      {
         ROS_WARN_STREAM_THROTTLE(1, "Joint velocity of at least one joint is greater than threshold: " 
           << joint_state.velocity[i] << "\t max allowed: " << max_joint_velocity);
         last_vel_exceeded_time = joint_state.header.stamp;
         vel_exceeded = true;
       }
     }
-    
-    if (vel_exceeded) {
-      last_robot_moved_time = last_vel_exceeded_time;
-      robot_moving = true;
-    }
-  } else {
-    double sq_sum = 0; 
-    for (size_t i = 0; i < joint_state.position.size(); ++i) {
-      sq_sum += (joint_state.position[i] - prev_joint_state.position[i]) * 
-                (joint_state.position[i] - prev_joint_state.position[i]);
-    }
-    double dist_norm = sqrt(sq_sum);
-
-    if (dist_norm > max_joint_difference) {
-      last_robot_moved_time = joint_state.header.stamp;
-      ROS_WARN_STREAM_THROTTLE(1, "Joint distance norm is greater than threshold: " << dist_norm);
-      robot_moving = true;
-    }
+    return vel_exceeded;
   }
 
-  return robot_moving;
-}
+  bool checkJointPositionDifference(const sensor_msgs::JointState& joint_state,const sensor_msgs::JointState& prev_joint_state,
+                                    double max_joint_difference, ros::Time& last_pos_exceeded_time) 
+  {
+    double sq_sum = 0;
+    for (size_t i = 0; i < joint_state.position.size(); ++i)
+    {
+      sq_sum += std::pow(joint_state.position[i] - prev_joint_state.position[i], 2);
+    }
+    double dist_norm = std::sqrt(sq_sum);
 
-bool isRobotSteady(
-  bool robot_moving,
-  const ros::Time& last_robot_moved_time,
-  double wait_time_stationary,
-  ros::Time& last_robot_steady_time ) 
-{
-  if (!robot_moving && fabs((ros::Time::now() - last_robot_moved_time).toSec()) < wait_time_stationary) {
-    ROS_WARN_STREAM_THROTTLE(1.0, "Robot still not steady hence not processing");
+    if (dist_norm > max_joint_difference)
+    {
+      last_pos_exceeded_time = joint_state.header.stamp;
+      ROS_WARN_STREAM_THROTTLE(1, "Joint distance norm is greater than threshold: " << dist_norm);
+      return true;
+    }
+
+    ROS_WARN_STREAM_THROTTLE(20, "Joint distance norm: " << dist_norm);
     return false;
-  } else {
+  }
+
+  bool isRobotMoving(const sensor_msgs::JointState& joint_state, const sensor_msgs::JointState& prev_joint_state, const sensor_msgs::ImageConstPtr& depth_msg,
+                   bool use_joint_velocities, bool use_selective_joints, const std::vector<std::string>& selective_joint_names, double max_joint_velocity, 
+                   double max_joint_difference, const std::string& world_frame, bool use_transform, ros::Time& last_robot_moved_time) 
+  {
+    bool robot_moving = false;
+
+    // Initialize times
+    ros::Time tf_moved_time, last_vel_exceeded_time, last_pos_diff_exceeded_time;
+    bool tf_moved = false;
+    bool vel_exceeded = false;
+    bool pos_diff_exceeded = false;
+
+    // Check if transformation has moved
+    if (use_transform) {
+      tf_moved = checkTfMoved(depth_msg, world_frame, use_transform, tf_moved_time);
+    }
+
+    
+    if (use_joint_velocities) 
+    {
+      // Check if joint velocities exceed the threshold
+      vel_exceeded = checkJointVelocities(joint_state, max_joint_velocity, use_selective_joints, selective_joint_names, last_vel_exceeded_time);
+    }
+    else
+    {
+    // Check if the joint position difference exceeds the threshold
+      checkJointPositionDifference(joint_state, prev_joint_state, max_joint_difference, last_pos_diff_exceeded_time);
+    }
+
+    // Determine the latest time and update robot moving status
+    if (tf_moved && vel_exceeded) {
+      // Both tf_moved and vel_exceeded are true, use the latest timestamp
+      last_robot_moved_time = std::max(tf_moved_time, last_vel_exceeded_time);
+      robot_moving = true;
+    } else if (tf_moved) {
+      last_robot_moved_time = tf_moved_time;
+      robot_moving = true;
+    } else if (vel_exceeded) {
+      last_robot_moved_time = last_vel_exceeded_time;
+      robot_moving = true;
+    } else if (pos_diff_exceeded) {
+      robot_moving = true;
+    }
+    ROS_WARN_STREAM_THROTTLE(0.1, "Robot moving status: "<<robot_moving);
+    return robot_moving;
+  }
+
+bool isRobotSteady( bool robot_moving, const ros::Time& last_robot_moved_time, double wait_time_stationary, ros::Time& last_robot_steady_time) 
+{
+  if (!robot_moving && fabs((ros::Time::now() - last_robot_moved_time).toSec()) > wait_time_stationary) 
+  {
     ROS_WARN_STREAM_THROTTLE(1.0, "Robot steady");
     last_robot_steady_time = ros::Time::now();
     return true;
+  } 
+  else 
+  {
+    ROS_WARN_STREAM_THROTTLE(1.0, "Robot still not steady hence not processing");
+    return false;
   }
 }
 
