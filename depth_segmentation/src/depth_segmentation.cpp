@@ -8,6 +8,10 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/photo/photo.hpp>
 
+#include <opencv2/opencv.hpp>
+#include <vector>
+#include <numeric>
+
 namespace depth_segmentation {
 
 CameraTracker::CameraTracker(const DepthCamera& depth_camera,
@@ -1272,5 +1276,159 @@ void segmentSingleFrame(const cv::Mat& rgb_image, const cv::Mat& depth_image,
   depth_segmenter.labelMap(rgb_image, rescaled_depth, depth_map, edge_map,
                            *normal_map, label_map, segment_masks, segments);
 }
+
+int DepthSegmenter::selectBestDepthImage()
+{
+    // Check that there is at least one image
+    if (rescaled_depth_vec_.empty())
+    {
+      LOG(WARNING)<<"Empty vec";
+      return -1; // No images available
+    }
+    // for(size_t i = 0; i < depth)
+    // {
+    //   *rescaled_depth = cv::Mat::zeros(depth_image_vec_[]->image.size(), CV_32FC1);
+    //   cv::rgbd::rescaleDepth(cv_depth_image->image, CV_32FC1, *rescaled_depth);
+    // }
+
+    // All images should be of the same size and type
+    int rows = rescaled_depth_vec_[0].rows;
+    int cols = rescaled_depth_vec_[0].cols;
+    int type = rescaled_depth_vec_[0].type();
+
+    for (size_t i = 0; i < rescaled_depth_vec_.size(); ++i)
+    {
+        if (rescaled_depth_vec_[i].rows != rows || rescaled_depth_vec_[i].cols != cols || rescaled_depth_vec_[i].type() != type)
+        {
+          LOG(WARNING)<<"Mismatch";
+          return -1; // Mismatch in image size or type
+        }
+    }
+
+    size_t N = rescaled_depth_vec_.size();
+    LOG(WARNING)<<"Size of depth vec:"<<N;
+    // Compute Laplacian variance for each image
+    std::vector<double> laplacianVariances(N, 0.0);
+
+    for (size_t i = 0; i < N; ++i)
+    {
+        cv::Mat laplacian;
+        cv::Laplacian(rescaled_depth_vec_[i], laplacian, CV_32FC1);
+
+        cv::Scalar mean, stddev;
+        cv::meanStdDev(laplacian, mean, stddev);
+        LOG(WARNING) << "Image " << i << " mean: " << mean[0] << ", stddev: " << stddev[0];
+
+        if (stddev[0] != stddev[0]) // Check for NaN
+        {
+            LOG(WARNING) << "Laplacian stddev is NaN for image: " << i;
+            laplacianVariances[i] = 0.0; // Set to zero or some default value
+        }
+        else
+        {
+            laplacianVariances[i] = stddev[0] * stddev[0]; // Variance
+            LOG(WARNING)<<"Laplace variance of image : "<<i<<" : "<<laplacianVariances[i];
+        }
+        
+    }
+    
+
+    // Compute optical flow magnitudes between consecutive images
+    std::vector<double> flowMagnitudesBetween(N - 1, 0.0);
+
+    for (size_t i = 0; i < N - 1; ++i)
+    {
+        cv::Mat prev = rescaled_depth_vec_[i];
+        cv::Mat next = rescaled_depth_vec_[i + 1];
+
+        cv::Mat flow;
+        cv::calcOpticalFlowFarneback(prev, next, flow, 0.5, 3, 15, 3, 5, 1.2, 0);
+
+        // Compute magnitude of flow vectors
+        std::vector<cv::Mat> flowChannels(2);
+        cv::split(flow, flowChannels);
+        cv::Mat magnitude;
+        cv::magnitude(flowChannels[0], flowChannels[1], magnitude);
+
+        // Compute mean magnitude
+        cv::Scalar meanFlow = cv::mean(magnitude);
+
+        flowMagnitudesBetween[i] = meanFlow[0];
+        
+    }
+
+    // Compute flow magnitude for each image
+    std::vector<double> flowMagnitudes(N, 0.0);
+
+    for (size_t i = 0; i < N; ++i)
+    {
+        double flowSum = 0.0;
+        int count = 0;
+        if (i > 0)
+        {
+            flowSum += flowMagnitudesBetween[i - 1];
+            count++;
+        }
+        if (i < N - 1)
+        {
+            flowSum += flowMagnitudesBetween[i];
+            count++;
+        }
+        if (count > 0)
+        {
+            flowMagnitudes[i] = flowSum / count;
+        }
+        else
+        {
+            flowMagnitudes[i] = 0.0;
+        }
+        LOG(WARNING)<<"flowMagnitudes of image : "<<i<<" : "<<flowMagnitudes[i];
+    }
+
+    // Normalize laplacianVariances and flowMagnitudes
+    double maxLapVar = *std::max_element(laplacianVariances.begin(), laplacianVariances.end());
+    double minLapVar = *std::min_element(laplacianVariances.begin(), laplacianVariances.end());
+
+    std::vector<double> normLapVar(N, 0.0);
+    for (size_t i = 0; i < N; ++i)
+    {
+        if (maxLapVar - minLapVar != 0)
+            normLapVar[i] = (laplacianVariances[i] - minLapVar) / (maxLapVar - minLapVar);
+        else
+            normLapVar[i] = 0.0;
+    }
+
+    double maxFlowMag = *std::max_element(flowMagnitudes.begin(), flowMagnitudes.end());
+    double minFlowMag = *std::min_element(flowMagnitudes.begin(), flowMagnitudes.end());
+
+    std::vector<double> normFlowMag(N, 0.0);
+    for (size_t i = 0; i < N; ++i)
+    {
+        if (maxFlowMag - minFlowMag != 0)
+            normFlowMag[i] = (flowMagnitudes[i] - minFlowMag) / (maxFlowMag - minFlowMag);
+        else
+            normFlowMag[i] = 0.0;
+    }
+
+    // Compute stability scores
+    std::vector<double> stabilityScores(N, 0.0);
+    for (size_t i = 0; i < N; ++i)
+    {
+        stabilityScores[i] = normLapVar[i] + normFlowMag[i];
+        LOG(WARNING)<<"stabilityScores of image : "<<i<<" : "<<stabilityScores[i];
+    }
+
+    // Find index of minimum stability score
+    auto minIt = std::min_element(stabilityScores.begin(), stabilityScores.end());
+    if (minIt != stabilityScores.end())
+    {
+        int idx = std::distance(stabilityScores.begin(), minIt);
+        std::cout<<"Best index: "<<idx;
+        return idx;
+    }
+
+    return -1; // No valid index found
+}
+
 
 }  // namespace depth_segmentation
