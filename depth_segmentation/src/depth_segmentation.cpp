@@ -1306,7 +1306,7 @@ int DepthSegmenter::selectBestDepthImage()
     }
 
     size_t N = rescaled_depth_vec_.size();
-    LOG(WARNING)<<"Size of depth vec:"<<N;
+    //LOG(WARNING)<<"Size of depth vec:"<<N;
     // Compute Laplacian variance for each image
     std::vector<double> laplacianVariances(N, 0.0);
 
@@ -1317,22 +1317,20 @@ int DepthSegmenter::selectBestDepthImage()
 
         cv::Scalar mean, stddev;
         cv::meanStdDev(laplacian, mean, stddev);
-        LOG(WARNING) << "Image " << i << " mean: " << mean[0] << ", stddev: " << stddev[0];
+        //LOG(WARNING) << "Image " << i << " mean: " << mean[0] << ", stddev: " << stddev[0];
 
         if (stddev[0] != stddev[0]) // Check for NaN
         {
-            LOG(WARNING) << "Laplacian stddev is NaN for image: " << i;
+            //LOG(WARNING) << "Laplacian stddev is NaN for image: " << i;
             laplacianVariances[i] = 0.0; // Set to zero or some default value
         }
         else
         {
             laplacianVariances[i] = stddev[0] * stddev[0]; // Variance
-            LOG(WARNING)<<"Laplace variance of image : "<<i<<" : "<<laplacianVariances[i];
+            //LOG(WARNING)<<"Laplace variance of image : "<<i<<" : "<<laplacianVariances[i];
         }
         
     }
-    
-
     // Compute optical flow magnitudes between consecutive images
     std::vector<double> flowMagnitudesBetween(N - 1, 0.0);
 
@@ -1382,7 +1380,7 @@ int DepthSegmenter::selectBestDepthImage()
         {
             flowMagnitudes[i] = 0.0;
         }
-        LOG(WARNING)<<"flowMagnitudes of image : "<<i<<" : "<<flowMagnitudes[i];
+        //LOG(WARNING)<<"flowMagnitudes of image : "<<i<<" : "<<flowMagnitudes[i];
     }
 
     // Normalize laplacianVariances and flowMagnitudes
@@ -1415,7 +1413,7 @@ int DepthSegmenter::selectBestDepthImage()
     for (size_t i = 0; i < N; ++i)
     {
         stabilityScores[i] = normLapVar[i] + normFlowMag[i];
-        LOG(WARNING)<<"stabilityScores of image : "<<i<<" : "<<stabilityScores[i];
+        //LOG(WARNING)<<"stabilityScores of image : "<<i<<" : "<<stabilityScores[i];
     }
 
     // Find index of minimum stability score
@@ -1423,7 +1421,7 @@ int DepthSegmenter::selectBestDepthImage()
     if (minIt != stabilityScores.end())
     {
         int idx = std::distance(stabilityScores.begin(), minIt);
-        std::cout<<"Best index: "<<idx;
+        //std::cout<<"Best index: "<<idx;
         return idx;
     }
 

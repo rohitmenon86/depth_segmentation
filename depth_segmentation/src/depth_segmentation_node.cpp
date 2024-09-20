@@ -613,15 +613,15 @@ class DepthSegmentationNode {
       
       cv::Scalar mean, stddev;
       cv::meanStdDev((cv_depth_image->image), mean, stddev);
-      ROS_WARN_STREAM_THROTTLE(1.0, "TYPE_16UC1 image " << " mean: " << mean[0] << ", stddev: " << stddev[0]);
+      //ROS_WARN_STREAM_THROTTLE(1.0, "TYPE_16UC1 image " << " mean: " << mean[0] << ", stddev: " << stddev[0]);
       *rescaled_depth = cv::Mat::zeros(cv_depth_image->image.size(), CV_32FC1);
       cv::rgbd::rescaleDepth(cv_depth_image->image, CV_32FC1, *rescaled_depth);
-      ROS_WARN_STREAM_THROTTLE(1.0, "TYPE_16UC1");
+      //ROS_WARN_STREAM_THROTTLE(1.0, "TYPE_16UC1");
     } else if (depth_msg->encoding ==
                sensor_msgs::image_encodings::TYPE_32FC1) {
       cv_depth_image = cv_bridge::toCvCopy(
           depth_msg, sensor_msgs::image_encodings::TYPE_32FC1);
-      ROS_WARN_STREAM_THROTTLE(1.0, "TYPE_32FC1");
+      //ROS_WARN_STREAM_THROTTLE(1.0, "TYPE_32FC1");
       *rescaled_depth = cv_depth_image->image;
     } else {
       LOG(FATAL) << "Unknown depth image encoding.";
@@ -645,7 +645,7 @@ class DepthSegmentationNode {
     }
     cv::Scalar mean, stddev;
     cv::meanStdDev(*rescaled_depth, mean, stddev);
-    ROS_WARN_STREAM_THROTTLE(1.0, "rescaled_depth " << " mean: " << mean[0] << ", stddev: " << stddev[0]);
+    //ROS_WARN_STREAM_THROTTLE(1.0, "rescaled_depth " << " mean: " << mean[0] << ", stddev: " << stddev[0]);
 
 
     if (params_.dilate_depth_image) {
@@ -663,7 +663,7 @@ class DepthSegmentationNode {
     cvtColor(cv_rgb_image->image, *bw_image, cv::COLOR_RGB2GRAY);
     cv::Scalar mean1, stddev1;
     cv::meanStdDev(*bw_image, mean1, stddev1);
-    ROS_WARN_STREAM_THROTTLE(1.0, "bw_image " << " mean: " << mean1[0] << ", stddev: " << stddev1[0]);
+    //ROS_WARN_STREAM_THROTTLE(1.0, "bw_image " << " mean: " << mean1[0] << ", stddev: " << stddev1[0]);
 
     *mask = cv::Mat::zeros(bw_image->size(), CV_8UC1);
     mask->setTo(cv::Scalar(depth_segmentation::CameraTracker::kImageRange));
@@ -842,7 +842,7 @@ class DepthSegmentationNode {
     if (robot_steady_ || publish_while_moving_) 
     {
       if (camera_info_ready_) {
-        ROS_WARN_STREAM_THROTTLE(0.1, "preprocess: "<<robot_steady_<<" last_robot_moved_time: "<<last_robot_moved_time_);
+        //ROS_WARN_STREAM_THROTTLE(0.1, "preprocess: "<<robot_steady_<<" last_robot_moved_time: "<<last_robot_moved_time_);
         //cv_bridge::CvImagePtr cv_rgb_image(new cv_bridge::CvImage);
         cv_rgb_image = cv_bridge::toCvCopy(rgb_msg, rgb_msg->encoding);
         if (rgb_msg->encoding == sensor_msgs::image_encodings::BGR8) {
@@ -855,14 +855,14 @@ class DepthSegmentationNode {
         {
           if(use_stability_score_ && robot_steady_ && depth_segmenter_.getVectorSize() < 5)
           {
-            ROS_WARN_STREAM_THROTTLE(0.2, "Adding to vectors");
+            //ROS_WARN_STREAM_THROTTLE(0.2, "Adding to vectors");
             depth_segmenter_.addToVectors( &rescaled_depth, &dilated_rescaled_depth,
                   cv_rgb_image, cv_depth_image, &bw_image, &mask);
             stable_depth_image_available_ = false;
           }
           else
           {
-            ROS_WARN_STREAM_THROTTLE(0.2, "image acquired");
+            //ROS_WARN_STREAM_THROTTLE(0.2, "image acquired");
             stable_depth_image_available_ = robot_steady_;
           }
         }
@@ -870,25 +870,25 @@ class DepthSegmentationNode {
     }
     if(use_stability_score_ && ((depth_segmenter_.getVectorSize() > 1 && robot_moving_) || (depth_segmenter_.getVectorSize() > 4)))
     {
-      ROS_WARN_STREAM_THROTTLE(1.0, "Loop entered");
+      //ROS_WARN_STREAM_THROTTLE(1.0, "Loop entered");
       {
-        ROS_WARN_STREAM_THROTTLE(0.5, "Selecting best depth image");
+        //ROS_WARN_STREAM_THROTTLE(0.5, "Selecting best depth image");
         best_depth_img_idx = depth_segmenter_.selectBestDepthImage();
-        ROS_WARN_STREAM_THROTTLE(0.5, "Returned from select best depth image");
+        //ROS_WARN_STREAM_THROTTLE(0.5, "Returned from select best depth image");
         if(best_depth_img_idx < 0)
         {
           ROS_ERROR_STREAM_THROTTLE(1.0, "No stable image");
           stable_depth_image_available_ = false;
           return;
         }
-        ROS_WARN_STREAM_THROTTLE(0.5, "Selected best depth image"<<best_depth_img_idx);
+        //ROS_WARN_STREAM_THROTTLE(0.5, "Selected best depth image"<<best_depth_img_idx);
         stable_depth_image_available_ = depth_segmenter_.retrieveFromVectors(best_depth_img_idx, &rescaled_depth, &dilated_rescaled_depth, cv_rgb_image, cv_depth_image, &bw_image, &mask);
       }
     }
   
     if (camera_info_ready_ && ((publish_while_moving_ == false && (stable_depth_image_available_ == true ) ) || (publish_while_moving_ == true)))
     {
-      ROS_WARN_THROTTLE(1.0, "Retrieved image for further processing");
+      //ROS_WARN_THROTTLE(1.0, "Retrieved image for further processing");
       if (!camera_tracker_.getRgbImage().empty() &&
             !camera_tracker_.getDepthImage().empty() ||
         !depth_segmentation::kUseTracker) {
@@ -925,7 +925,7 @@ class DepthSegmentationNode {
                                   normal_map, &label_map, &segment_masks,
                                   &segments, pcl_cloud);
           if (segments.size() > 0u) {
-            ROS_WARN_STREAM_THROTTLE(2.0, "Before publishing segments"); 
+            ROS_WARN_STREAM_THROTTLE(10.0, "Before publishing segments"); 
             publish_segments(segments, depth_msg->header);
           }
         }
@@ -1063,7 +1063,7 @@ class DepthSegmentationNode {
       return true;
     }
 
-    ROS_WARN_STREAM_THROTTLE(20, "Joint distance norm: " << dist_norm);
+    //ROS_WARN_STREAM_THROTTLE(20, "Joint distance norm: " << dist_norm);
     return false;
   }
 
@@ -1110,7 +1110,7 @@ class DepthSegmentationNode {
     } else if (pos_diff_exceeded) {
       robot_moving = true;
     }
-    ROS_WARN_STREAM_THROTTLE(0.1, "Robot moving status: "<<robot_moving);
+    ROS_WARN_STREAM_THROTTLE(10, "Robot moving status: "<<robot_moving);
     return robot_moving;
   }
 
@@ -1118,7 +1118,7 @@ bool isRobotSteady( bool robot_moving, const ros::Time& last_robot_moved_time, d
 {
   if (!robot_moving && fabs((ros::Time::now() - last_robot_moved_time).toSec()) > wait_time_stationary) 
   {
-    ROS_WARN_STREAM_THROTTLE(1.0, "Robot steady");
+    ROS_WARN_STREAM_THROTTLE(10, "Robot steady");
     last_robot_steady_time = ros::Time::now();
     return true;
   } 
